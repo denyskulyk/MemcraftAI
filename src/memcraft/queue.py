@@ -74,7 +74,6 @@ class StatusConflictError(QueueError):
 
 def claim(session: Session, lane: JobLane, worker_id: str) -> Job | None:
     """Take the oldest waiting job of the lane, or None. COMMITS the session."""
-    # E5.4: while settings.paused is set, return None here.
     starts = STARTS[lane]
     row = session.execute(
         select(Job.id, Job.status)
@@ -154,7 +153,7 @@ def queue_position(session: Session, job_id: uuid.UUID) -> int | None:
 def requeue_stale(session: Session, lane: JobLane, older_than: timedelta) -> int:
     """Put jobs whose worker died back in line, at their old place. COMMITS the session.
 
-    A claim is not renewed while a job runs, so `older_than` must be longer than any job takes.
+    The worker renews claimed_at with a heartbeat, so `older_than` only has to exceed a few beats.
     """
     if older_than <= timedelta(0):
         raise ValueError("older_than must be positive")

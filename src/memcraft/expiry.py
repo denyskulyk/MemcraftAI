@@ -1,12 +1,15 @@
 """Previews nobody released: everything the job made is hard deleted after 24 hours.
 
-The job row stays, as expired, without any text or file.
+The job row stays, as expired, without any text or file. Jobs that ended closed, cancelled or
+failed lose their photos, files and text the same way 24 hours after their last change, and
+keep their status.
 """
 
 from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import ColumnElement, and_, delete, exists, func, null, or_, select, update
@@ -19,6 +22,8 @@ from memcraft.storage import FileStore
 log = logging.getLogger(__name__)
 
 PREVIEW_LIFETIME = timedelta(hours=24)
+FINISHED_LIFETIME = timedelta(hours=24)
+FINISHED = (JobStatus.CLOSED, JobStatus.CANCELLED, JobStatus.FAILED)
 
 
 def expire_previews(session: Session, store: FileStore, now: datetime | None = None) -> int:
@@ -26,6 +31,25 @@ def expire_previews(session: Session, store: FileStore, now: datetime | None = N
 
     Returns how many jobs expired. A job that fails or is locked is left for the next run.
     """
+    return _sweep(session, store, now, _due, JobStatus.EXPIRED)
+
+
+def expire_finished(session: Session, store: FileStore, now: datetime | None = None) -> int:
+    """Strip closed, cancelled and failed jobs untouched for a day. COMMITS the session.
+
+    Their files, ideas, text and step data go; the row keeps its status. Returns how many jobs
+    were stripped. A job that fails or is locked is left for the next run.
+    """
+    return _sweep(session, store, now, _finished_due, None)
+
+
+def _sweep(
+    session: Session,
+    store: FileStore,
+    now: datetime | None,
+    due_at: Callable[[datetime], ColumnElement[bool]],
+    new_status: JobStatus | None,
+) -> int:
     session.commit()  # a failed job rolls back, which must not cost the caller's work
     if now is None:
         now = session.scalar(select(func.now()))  # the clock created_at comes from
@@ -33,17 +57,34 @@ def expire_previews(session: Session, store: FileStore, now: datetime | None = N
         raise ValueError("now needs a time zone")
     else:
         now = now.astimezone(UTC)
-    due = _due(now)
+    due = due_at(now)
     job_ids = session.scalars(select(Job.id).where(due).order_by(Job.id)).all()
     session.commit()
     expired = 0
     for job_id in job_ids:
         try:
-            expired += _expire(session, store, job_id, due)
+            expired += _expire(session, store, job_id, due, new_status)
         except Exception:
             session.rollback()
             log.exception("job %s could not be expired", job_id)
     return expired
+
+
+def _finished_due(now: datetime) -> ColumnElement[bool]:
+    step_data = or_(
+        JobStep.inputs_hash.is_not(None),
+        JobStep.inputs.is_not(None),
+        JobStep.output.is_not(None),
+        JobStep.error.is_not(None),
+    )
+    left = or_(
+        Job.idea_text.is_not(None),
+        Job.error.is_not(None),
+        exists().where(Asset.job_id == Job.id),
+        exists().where(Idea.job_id == Job.id),
+        exists().where(JobStep.job_id == Job.id, step_data),
+    )
+    return and_(Job.status.in_(FINISHED), Job.updated_at <= now - FINISHED_LIFETIME, left)
 
 
 def _due(now: datetime) -> ColumnElement[bool]:
@@ -59,7 +100,13 @@ def _due(now: datetime) -> ColumnElement[bool]:
     )
 
 
-def _expire(session: Session, store: FileStore, job_id: uuid.UUID, due: ColumnElement[bool]) -> int:
+def _expire(
+    session: Session,
+    store: FileStore,
+    job_id: uuid.UUID,
+    due: ColumnElement[bool],
+    new_status: JobStatus | None = JobStatus.EXPIRED,
+) -> int:
     # A release or a save in progress holds a lock on the row: it wins, and this run skips it.
     # Once the lock is ours, a release waits and then finds the job expired.
     job = session.scalars(
@@ -71,7 +118,8 @@ def _expire(session: Session, store: FileStore, job_id: uuid.UUID, due: ColumnEl
     if job is None:
         session.rollback()
         return 0
-    transition(session, job, JobStatus.EXPIRED, expected=JobStatus.PREVIEW_READY)
+    if new_status is not None:
+        transition(session, job, new_status, expected=JobStatus.PREVIEW_READY)
     job.idea_text = None
     job.error = None
     session.execute(delete(Idea).where(Idea.job_id == job_id))

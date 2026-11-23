@@ -9,7 +9,7 @@ from sqlalchemy import event, func, select, update
 from sqlalchemy.orm import Session
 
 from memcraft import expiry
-from memcraft.expiry import expire_previews
+from memcraft.expiry import FINISHED, expire_finished, expire_previews
 from memcraft.models import (
     Asset,
     AssetKind,
@@ -324,6 +324,94 @@ def test_one_failing_job_does_not_stop_the_others(store, session, roots, monkeyp
     assert len(files(*roots)) == 5
     assert str(failing) in caplog.text
     assert "a cat" not in caplog.text
+
+
+# Closed, cancelled and failed jobs.
+
+
+def finish(session, job, last_change):
+    session.execute(update(Job).where(Job.id == job.id).values(updated_at=last_change))
+    session.commit()
+
+
+def stripped(session, job, status):
+    session.expire_all()
+    steps = session.scalars(select(JobStep).where(JobStep.job_id == job.id)).all()
+    return (
+        job.status is status
+        and job.idea_text is None
+        and job.error is None
+        and count(session, Asset, Asset.job_id == job.id) == 0
+        and count(session, Idea, Idea.job_id == job.id) == 0
+        and len(steps) == 1
+        and (steps[0].inputs, steps[0].output, steps[0].inputs_hash, steps[0].error) == (None,) * 4
+    )
+
+
+@pytest.mark.parametrize("status", FINISHED)
+def test_finished_jobs_are_stripped_after_a_day(store, session, roots, status):
+    old = new_job(store, session, status)
+    young = new_job(store, session, status)
+    finish(session, old, NOW - DAY)
+    finish(session, young, NOW - DAY + timedelta(seconds=1))
+    assert expire_finished(session, store, NOW) == 1
+    assert stripped(session, old, status)  # the row stays, with its status
+    assert young.idea_text == "a cat"
+    assert count(session, Asset, Asset.job_id == young.id) == 5
+    assert len(files(*roots)) == 5
+    assert count(session, FileDeletion) == 0
+    assert expire_finished(session, store, NOW + 9 * DAY) == 1  # the young one; old is done
+    assert expire_finished(session, store, NOW + 9 * DAY) == 0
+    assert files(*roots) == []
+
+
+def test_a_finished_job_with_only_text_left_is_stripped(store, session):
+    job = new_job(store, session, S.FAILED, kinds=[])
+    finish(session, job, NOW - DAY)
+    assert expire_finished(session, store, NOW) == 1
+    assert stripped(session, job, S.FAILED)
+
+
+@pytest.mark.parametrize("status", sorted(set(JobStatus) - set(FINISHED)))
+def test_other_jobs_are_not_stripped(store, session, status):
+    job = new_job(store, session, status)
+    finish(session, job, NOW - 9 * DAY)
+    assert expire_finished(session, store, NOW) == 0
+    session.expire_all()
+    assert job.status is status
+    assert job.idea_text == "a cat"
+
+
+def test_expire_previews_leaves_finished_jobs_alone(store, session):
+    job = new_job(store, session, S.CLOSED)
+    finish(session, job, NOW - 9 * DAY)
+    assert expire_previews(session, store, NOW) == 0
+    assert count(session, Asset, Asset.job_id == job.id) == 5
+
+
+def test_finished_now_is_the_database_clock(store, session):
+    job = new_job(store, session, S.CANCELLED)
+    assert expire_finished(session, store) == 0
+    finish(session, job, datetime.now(UTC) - DAY - timedelta(minutes=1))
+    assert expire_finished(session, store) == 1
+    assert stripped(session, job, S.CANCELLED)
+
+
+def test_finished_needs_a_time_zone(store, session):
+    with pytest.raises(ValueError, match="zone"):
+        expire_finished(session, store, NOW.replace(tzinfo=None))
+
+
+@on_postgres
+def test_a_locked_finished_job_is_skipped(store, engine, session):
+    job = new_job(store, session, S.FAILED)
+    finish(session, job, NOW - DAY)
+    session.execute(select(Job).where(Job.id == job.id).with_for_update()).all()
+    with Session(engine) as sweeper:
+        assert expire_finished(sweeper, store, NOW) == 0
+    session.commit()
+    with Session(engine) as sweeper:
+        assert expire_finished(sweeper, store, NOW) == 1
 
 
 # Threads, each with its own session and connection.
