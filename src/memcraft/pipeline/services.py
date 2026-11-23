@@ -19,12 +19,16 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 
 from memcraft.comfy import DEFAULT_URL, ComfyClient, check_url
 from memcraft.roles.gemma import GemmaClient
 from memcraft.worker.watchdog import NOT_OURS
+
+if TYPE_CHECKING:
+    from memcraft.worker.memory import MemoryWatch
 
 log = logging.getLogger(__name__)
 
@@ -415,3 +419,22 @@ def stop_all(*stoppers: Callable[[], None]) -> None:
             stop()
         except Exception:
             log.exception("stopping a service failed")
+
+
+def memory_watch(
+    comfy: ComfyServer,
+    gemma: GemmaServer | SwapGemma,
+    *,
+    min_free_gb: float | None = None,
+    wait_seconds: float | None = None,
+) -> MemoryWatch:
+    """The worker's memory watch (E8.2): to make room before a GPU step it unloads Gemma
+    (llama-swap's memcraft-gemma or the own llama-server) and frees ComfyUI's cached models."""
+    from memcraft.worker.memory import MIN_FREE_GB, WAIT_SECONDS, MemoryWatch
+
+    return MemoryWatch(
+        free_gemma=gemma.stop,
+        free_comfy=comfy.free,
+        min_free_gb=MIN_FREE_GB if min_free_gb is None else min_free_gb,
+        wait_seconds=WAIT_SECONDS if wait_seconds is None else wait_seconds,
+    )

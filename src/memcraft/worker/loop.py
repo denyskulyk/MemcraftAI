@@ -11,6 +11,10 @@ Before every step the worker reads settings.paused. While paused it finishes the
 in, unloads models through the `unload` callback, gives up the GPU lease and waits; the claim
 stays alive. A stop request lets the running step finish; the job's claim then runs out and
 requeue_stale() puts the job back in line.
+
+With a `memory` watch, RAM and VRAM are logged at the start and end of every step and kept under
+the "memory" key of job_steps.output; before a GPU step it makes room when free RAM is below
+settings.memory_min_free_gb (default: the watch's own limit).
 """
 
 from __future__ import annotations
@@ -30,10 +34,11 @@ from sqlalchemy import Engine, func, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from memcraft.models import Job, JobLane, JobStatus, JobStep, StepName, StepStatus
+from memcraft.models import Job, JobLane, JobStatus, JobStep, Setting, StepName, StepStatus
 from memcraft.queue import StatusConflictError, claim, transition
 from memcraft.storage import FileStore
 from memcraft.worker.lease import MAX_WAIT, GpuLease, Lease, LocalLease, acquire, claim_render
+from memcraft.worker.memory import SETTING_MIN_FREE, MemoryWatch
 from memcraft.worker.pause import is_paused
 from memcraft.worker.progress import ProgressReporter, job_fraction, publish_status, weights_for
 from memcraft.worker.schedule import Schedule
@@ -151,6 +156,7 @@ class Worker:
         watchdog: Watchdog | None = None,
         schedule: Schedule | None = None,
         config: WorkerConfig | None = None,
+        memory: MemoryWatch | None = None,
     ) -> None:
         self.engine = engine
         self.registry = registry
@@ -164,6 +170,7 @@ class Worker:
         self.unload = unload
         self.watchdog = watchdog
         self.schedule = schedule
+        self.memory = memory
         self.config = config or WorkerConfig()
         self.stopping = threading.Event()
         self._lanes = {lane: _LaneState(lane) for lane in JobLane}
@@ -368,6 +375,9 @@ class Worker:
 
         stop_step = threading.Event()
         forget = heartbeat.on_lost(stop_step.set)
+        label = f"job {job_id} step {planned.step.value}/{planned.ordinal}"
+        # Before the watchdog's watch: waiting for RAM is not a hung service.
+        memory = self._memory_before(handler, label, stop_step)
         watch = (
             self.watchdog.watch(handler.service, stop_step.set)
             if self.watchdog is not None
@@ -399,6 +409,8 @@ class Worker:
         try:
             try:
                 output = handler.run(ctx)
+                if memory is not None:
+                    output = {**(output or {}), "memory": self._memory_after(memory, label)}
                 self._mark_done(step_session, job_id, running, step_id, output)
             except Exception as caught:
                 step_session.rollback()
@@ -412,9 +424,12 @@ class Worker:
         if error is None:
             reporter.step(planned.step, planned.ordinal, planned.count, 1.0, step_id)
             return _Outcome.DONE
+        if memory is not None and "end" not in memory:
+            self._memory_after(memory, label)
+        kept = {"memory": memory} if memory is not None else None
         if heartbeat.lost.is_set() or isinstance(error, _LostClaimError):
             log.warning("job %s lost during step %s", job_id, planned.step.value)
-            self._record_failure(session, step_id, INTERRUPTED)
+            self._record_failure(session, step_id, INTERRUPTED, kept)
             return _Outcome.STOP
         if hung is not None:
             message = HUNG + hung
@@ -431,7 +446,7 @@ class Worker:
             message,
             exc_info=error if hung is None else None,
         )
-        self._record_failure(session, step_id, message)
+        self._record_failure(session, step_id, message, kept)
         if hung is not None and hung_before:
             return self._fail(session, job_id, running, message)
         if len(failed) + 1 >= self.config.max_attempts:
@@ -462,15 +477,26 @@ class Worker:
             raise _LostClaimError("the job is not ours any more")
         session.commit()
 
-    def _record_failure(self, session: Session, step_id: uuid.UUID, message: str) -> None:
+    def _record_failure(
+        self,
+        session: Session,
+        step_id: uuid.UUID,
+        message: str,
+        output: Mapping[str, Any] | None = None,
+    ) -> None:
+        values: dict[str, Any] = {
+            "status": StepStatus.FAILED,
+            "error": message[:MAX_ERROR],
+            "finished_at": _clock(session),
+        }
+        if output is not None:
+            values["output"] = dict(output)
         try:
             session.rollback()
             session.execute(
                 update(JobStep)
                 .where(JobStep.id == step_id, JobStep.status == StepStatus.RUNNING)
-                .values(
-                    status=StepStatus.FAILED, error=message[:MAX_ERROR], finished_at=_clock(session)
-                )
+                .values(**values)
             )
             session.commit()
         except SQLAlchemyError:
@@ -526,6 +552,42 @@ class Worker:
         session.commit()
         log.warning("job %s failed: %s", job_id, message)
         return _Outcome.STOP
+
+    # Memory.
+
+    def _memory_before(
+        self, handler: Any, label: str, stop: threading.Event
+    ) -> dict[str, Any] | None:
+        if self.memory is None:
+            return None
+        try:
+            return self.memory.before_step(
+                needs_gpu=handler.needs_gpu,
+                service=handler.service,
+                label=label,
+                min_free_gb=self._memory_limit(),
+                stop=stop,
+            )
+        except Exception:
+            log.exception("the memory watch failed before %s", label)
+            return {}
+
+    def _memory_after(self, record: dict[str, Any], label: str) -> dict[str, Any]:
+        try:
+            return self.memory.after_step(record, label)  # type: ignore[union-attr]
+        except Exception:
+            log.exception("the memory watch failed after %s", label)
+            return record
+
+    def _memory_limit(self) -> float | None:
+        """settings.memory_min_free_gb, or None for the watch's own limit."""
+        try:
+            with Session(self.engine) as session:
+                value = session.scalar(select(Setting.value).where(Setting.key == SETTING_MIN_FREE))
+            return None if value is None else float(value)
+        except (SQLAlchemyError, TypeError, ValueError):
+            log.warning("cannot read settings.%s", SETTING_MIN_FREE, exc_info=True)
+            return None
 
     # Pause and the GPU.
 

@@ -3,7 +3,9 @@
 It runs the idea lane (Gemma on the CPU) and the render lane (the GPU) with the app's own
 ComfyUI on 127.0.0.1:8199, started through deploy/comfyui.ps1 when it does not answer, and
 the app's own CPU llama-server for Gemma on 127.0.0.1:8098, started when a step needs it and
-stopped after --gemma-idle-minutes. A pause frees ComfyUI's models and stops Gemma. The
+stopped after --gemma-idle-minutes. RAM and VRAM are logged around every step, and before a
+GPU step with less than --min-free-ram-gb free RAM, Gemma and ComfyUI's models are unloaded
+first (worker/memory.py). A pause frees ComfyUI's models and stops Gemma. The
 watchdog restarts only these two. At start the ComfyUI install is checked against
 deploy/pins.json; a mismatch is logged, not refused.
 
@@ -53,6 +55,14 @@ def main(argv: list[str] | None = None) -> int:
         default="swap",
         help="swap: the memcraft-gemma model of llama-swap; own: a llama-server on 8098",
     )
+    parser.add_argument(
+        "--min-free-ram-gb",
+        type=float,
+        default=6.0,
+        help="before a GPU step, unload Gemma and ComfyUI's models below this much free RAM "
+        "(settings.memory_min_free_gb overrides it; 0 turns it off)",
+    )
+    parser.add_argument("--memory-wait-seconds", type=float, default=180.0)
     parser.add_argument("--stop-file", type=Path, default=PROJECT / "data" / "worker.stop")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(threadName)s %(message)s")
@@ -94,7 +104,13 @@ def _dry(engine: Engine, args: argparse.Namespace, settings: object) -> int:
 
 def _real(engine: Engine, args: argparse.Namespace, settings: object) -> int:
     from memcraft.pipeline import build_registry
-    from memcraft.pipeline.services import ComfyServer, GemmaServer, SwapGemma, stop_all
+    from memcraft.pipeline.services import (
+        ComfyServer,
+        GemmaServer,
+        SwapGemma,
+        memory_watch,
+        stop_all,
+    )
     from memcraft.pipeline.steps import Deps
     from memcraft.worker.watchdog import Watchdog, comfy_service, llama_server_service
 
@@ -141,6 +157,12 @@ def _real(engine: Engine, args: argparse.Namespace, settings: object) -> int:
         unload=unload,
         watchdog=watchdog,
         schedule=schedule,
+        memory=memory_watch(
+            comfy,
+            gemma,
+            min_free_gb=args.min_free_ram_gb,
+            wait_seconds=args.memory_wait_seconds,
+        ),
     )
     if not args.no_pins_check:
         threading.Thread(target=_check_pins, name="pins", daemon=True).start()
