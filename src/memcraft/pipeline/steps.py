@@ -657,6 +657,7 @@ def clip_request(
         "frames": director_run["frames"],
         "fps": FPS,
         "first_strength": run_plan.first_strength,
+        "guide_strength": run_plan.guide_strength,
         "first_frame": first_id,
         "guides": guides,
     }
@@ -677,6 +678,8 @@ def request_from(
         ),
         fps=described.get("fps", FPS),
         first_strength=described["first_strength"],
+        # Scenarios planned before E15 have no guide strength and keep the old 1.0.
+        guide_strength=described.get("guide_strength", 1.0),
         folder=folder_of(job_id),
     )
 

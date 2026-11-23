@@ -452,3 +452,14 @@ def test_plan_with_one_length_per_run():
     assert long.frames == 313
     with pytest.raises(EngineError):
         plan(RULES["multishot"], JobLength.SHORT, frames=[97, 97])
+
+
+def test_keyframe_guides_pull_at_half_strength():
+    from memcraft.engines.recipes import RULES, plan
+    from memcraft.models import JobLength
+
+    for length in (JobLength.SHORT, JobLength.LONG):
+        runs = plan(RULES["keyframes"], length).runs
+        assert all(run.guide_strength == 0.5 for run in runs)
+        assert all(run.first_strength == 1.0 for run in runs)
+    assert plan(RULES["multishot"], JobLength.SHORT).runs[0].guide_strength == 1.0

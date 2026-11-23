@@ -62,6 +62,9 @@ class RunPlan:
     # Shots the director writes into this run by default, and at most; 1 is a single take.
     shots: int
     max_shots: int
+    # How hard the middle and end keyframes pull. 1.0 makes LTX jump to them and hold still;
+    # 0.5 leaves room to draw the motion, with no face loss in Denys's review (E15).
+    guide_strength: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -91,6 +94,7 @@ class RecipeRules:
     max_shots: int = 1
     # The first run of a multi-shot job starts from the photo at the strength of LTX v8.
     photo_first_strength: float = 0.7
+    guide_strength: float = 0.5
 
 
 RULES: dict[str, RecipeRules] = {
@@ -128,15 +132,20 @@ def plan(rules: RecipeRules, length: JobLength, frames: int | Sequence[int] | No
             )
         return Plan(rules.regime, (), tuple(runs))
     middle = 8 * round(lengths[0] / 16)
+    g = rules.guide_strength
     if count == 1:
         # E0.4: start, middle and end in one run move properly when the keyframes match.
-        runs.append(RunPlan(0, lengths[0], First.KEYFRAME, 0, ((1, middle), (2, LAST)), 1.0, 1, 1))
+        runs.append(
+            RunPlan(0, lengths[0], First.KEYFRAME, 0, ((1, middle), (2, LAST)), 1.0, 1, 1, g)
+        )
     else:
         # Run 1 leaves its end free, so it does not freeze before the cut (E0.5).
-        runs.append(RunPlan(0, lengths[0], First.KEYFRAME, 0, ((1, middle),), 1.0, 1, 1))
+        runs.append(RunPlan(0, lengths[0], First.KEYFRAME, 0, ((1, middle),), 1.0, 1, 1, g))
         for i in range(1, count):
             guides = ((2, LAST),) if i == count - 1 else ()
-            runs.append(RunPlan(i, lengths[i], First.PREVIOUS_LAST_FRAME, None, guides, 1.0, 1, 1))
+            runs.append(
+                RunPlan(i, lengths[i], First.PREVIOUS_LAST_FRAME, None, guides, 1.0, 1, 1, g)
+            )
     return Plan(rules.regime, ("start", "middle", "end"), tuple(runs))
 
 

@@ -795,3 +795,10 @@ def test_an_older_director_prompt_takes_the_shipped_cast_part(role):
     else:
         direct_multishot(run_text, older, PHOTO, CAST_IDEA, cast=CAST[:2])
     assert "\n\nCAST: " in calls[0]["prompt"]
+
+
+def test_keyframe_prompt_keeps_actions_before_and_after():
+    text = (
+        Path(director.__file__).parent / "prompts" / "director-keyframes-qwen3.8.txt"
+    ).read_text(encoding="utf-8")
+    assert "wind-up" in text and "never a pose that undoes it" in text
