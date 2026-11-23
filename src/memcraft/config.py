@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +16,16 @@ class Settings(BaseSettings):
     allowed_hosts: str = "localhost,127.0.0.1"
     # This Tailscale login becomes the admin on its first visit. Empty: nobody does.
     admin_login: str = ""
+    # The address people open, such as https://pc.tailnet.ts.net. Passkeys are bound to its
+    # host name, so changing it means enrolling the admin passkey again.
+    public_origin: str = "http://localhost:8000"
+
+    @property
+    def passkey_rp_id(self) -> str:
+        host = urlsplit(self.public_origin).hostname
+        if not host:
+            raise ValueError("MEMCRAFT_PUBLIC_ORIGIN must be an address like https://name")
+        return host
 
     @property
     def allowed_host_list(self) -> list[str]:

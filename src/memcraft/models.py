@@ -14,6 +14,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    LargeBinary,
     MetaData,
     UniqueConstraint,
     func,
@@ -119,6 +120,11 @@ class PromptRole(enum.StrEnum):
     DIRECTOR_MULTISHOT = "director_multishot"
     DIRECTOR_KEYFRAMES = "director_keyframes"
     CRITIC = "critic"
+
+
+class ChallengePurpose(enum.StrEnum):
+    REGISTER = "register"
+    SIGN_IN = "sign_in"
 
 
 class EngineSlot(enum.StrEnum):
@@ -403,3 +409,48 @@ class Setting(Base):
     key: Mapped[str] = mapped_column(primary_key=True)
     value: Mapped[Any] = mapped_column(JSONB)
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class Passkey(Base):
+    """An admin's passkey. Only the public key is kept."""
+
+    __tablename__ = "passkeys"
+
+    id: Mapped[uuid.UUID] = _id()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    credential_id: Mapped[bytes] = mapped_column(LargeBinary, unique=True)
+    public_key: Mapped[bytes] = mapped_column(LargeBinary)
+    sign_count: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    name: Mapped[str]
+    created_at: Mapped[datetime] = _now()
+    last_used_at: Mapped[datetime | None]
+
+
+class AuthChallenge(Base):
+    """A WebAuthn challenge, used once and only before it expires."""
+
+    __tablename__ = "auth_challenges"
+
+    id: Mapped[uuid.UUID] = _id()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    purpose: Mapped[ChallengePurpose] = mapped_column(_text_enum(ChallengePurpose, "purpose"))
+    challenge: Mapped[bytes] = mapped_column(LargeBinary)
+    expires_at: Mapped[datetime]
+
+
+class AdminSession(Base):
+    """A signed-in admin. The cookie holds the token; only its sha256 is stored."""
+
+    __tablename__ = "admin_sessions"
+
+    token_sha256: Mapped[str] = mapped_column(primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    passkey_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("passkeys.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = _now()
+    expires_at: Mapped[datetime]

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MemcraftAI admin</title>
+    <link rel="stylesheet" href="/admin.css">
+    <script src="/admin.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <h1>MemcraftAI admin</h1>
+      <p id="status" role="status">Checking…</p>
+      <div id="passkey" hidden>
+        <button id="enrol" type="button" hidden>Create a passkey</button>
+        <button id="sign-in" type="button" hidden>Sign in with your passkey</button>
+      </div>
+      <section id="people" hidden>
+        <div class="bar">
+          <h2>People</h2>
+          <button id="add-passkey" type="button" class="quiet">Add another passkey</button>
+          <button id="sign-out" type="button" class="quiet">Sign out</button>
+        </div>
+        <div class="table">
+          <table>
+            <thead>
+              <tr><th>Tailscale login</th><th>Name</th><th>Status</th><th>Videos</th><th>Since</th><th></th></tr>
+            </thead>
+            <tbody id="users"></tbody>
+          </table>
+        </div>
+        <p class="note">Delete removes the person, every video and every photo at once. It cannot be undone.</p>
+      </section>
+    </main>
+  </body>
+</html>

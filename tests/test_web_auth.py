@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from memcraft.config import Settings, get_settings
 from memcraft.models import AssetKind, Job, JobLength, JobQuality, User, UserRole, UserStatus
 from memcraft.storage import FileStore
-from memcraft.web.api import router
+from memcraft.web import api, upload
 from memcraft.web.app import create_app
 from memcraft.web.auth import get_session, get_store
 
@@ -197,7 +197,7 @@ def test_every_api_route_needs_an_approved_user(client, engine):
     """A new route that forgets the check fails here. /api/me is the one exception."""
     add_user(engine, BOB, UserStatus.PENDING)
     checked = 0
-    for route in router.routes:
+    for route in [*api.router.routes, *upload.router.routes]:
         if route.path == "/api/me":
             continue
         path = route.path.replace("{job_id}", str(uuid.uuid4()))

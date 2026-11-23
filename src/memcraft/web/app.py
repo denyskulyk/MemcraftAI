@@ -8,7 +8,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from memcraft import __version__
 from memcraft.config import Settings, get_settings
 from memcraft.db import database_ok
-from memcraft.web import api
+from memcraft.web import admin, api, upload
 
 FRONTEND = Path(__file__).resolve().parents[3] / "frontend"
 
@@ -50,6 +50,8 @@ def create_app(settings: Settings) -> FastAPI:
         }
 
     app.include_router(api.router)
+    app.include_router(upload.router)
+    app.include_router(admin.router)
 
     # Last, so the routes above win. Plain HTML, CSS and JS: no Node build step.
     if FRONTEND.is_dir():

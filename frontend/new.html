@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>New video · MemcraftAI</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/crop.js" defer></script>
+    <script src="/new.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <nav><a href="/">Back to your videos</a></nav>
+      <h1>New video</h1>
+      <p id="status" role="status">Checking who you are…</p>
+
+      <form id="form" hidden novalidate>
+        <section>
+          <h2>1. Photos</h2>
+          <p class="hint">
+            Add 1 to 3 photos, PNG or JPEG, up to 20 MB each. On each photo, drag the
+            yellow frame to choose what goes into the video, and drag a corner to make it
+            bigger or smaller. With a keyboard: the arrow keys move the frame, + and -
+            change its size.
+          </p>
+          <p>
+            <input id="files" class="file-input" type="file" accept="image/png,image/jpeg" multiple>
+            <label for="files" class="button">Add photos</label>
+          </p>
+          <p id="photo-error" class="error" role="alert"></p>
+          <div id="photos"></div>
+        </section>
+
+        <fieldset>
+          <legend>2. Length</legend>
+          <label class="choice"><input type="radio" name="length" value="short" checked> Short</label>
+          <label class="choice"><input type="radio" name="length" value="long"> Long</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>3. Quality</legend>
+          <label class="choice"><input type="radio" name="quality" value="hd720" checked> 720p</label>
+          <label class="choice"><input type="radio" name="quality" value="fhd1080"> 1080p</label>
+        </fieldset>
+
+        <section>
+          <h2><label for="idea">4. Your idea (optional)</label></h2>
+          <textarea id="idea" maxlength="500" aria-describedby="idea-hint"></textarea>
+          <p id="idea-hint" class="hint">Leave it empty and the app will suggest an idea.</p>
+        </section>
+
+        <section>
+          <h2>How your video will be made</h2>
+          <p id="note" class="note" aria-live="polite">Add a photo to see how your video will be made.</p>
+        </section>
+
+        <button id="confirm" class="primary" type="submit" disabled>Make my video</button>
+        <div id="progress-box" hidden>
+          <progress id="progress" max="100" value="0"></progress>
+          <p id="progress-text" class="hint" role="status"></p>
+        </div>
+        <p id="submit-error" class="error" role="alert"></p>
+      </form>
+
+      <section id="done" hidden>
+        <h2 class="ok">Your video is in the queue</h2>
+        <p id="done-text"></p>
+        <p><a href="/">Back to your videos</a> · <a href="/new.html">Make another video</a></p>
+      </section>
+    </main>
+  </body>
+</html>
