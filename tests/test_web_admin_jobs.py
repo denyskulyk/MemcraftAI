@@ -124,7 +124,7 @@ def test_the_admin_sees_every_job_with_its_steps(client, engine, store, alice):
     )
     assert job["steps"] == {
         "done": 1,
-        "total": 3,
+        "total": 2,  # one row per step: the retry replaces the failed try
         "current": "clip 1",
         "last_error": "out of memory",
     }
@@ -224,3 +224,32 @@ def test_pause_from_another_site_is_refused(client):
 @pytest.mark.parametrize("body", [{}, {"paused": "yes please"}, {"paused": None}])
 def test_pause_needs_a_boolean(client, body):
     assert client.post("/api/admin/pause", json=body).status_code == 422
+
+
+def test_a_retry_that_worked_hides_the_failed_try(engine):
+    from memcraft.web.admin import _step_summaries
+
+    with Session(engine) as session:
+        owner = User(tailscale_login="friend@example.com")
+        session.add(owner)
+        session.flush()
+        job = Job(
+            owner_id=owner.id, photo_count=1, length=JobLength.SHORT, quality=JobQuality.HD720
+        )
+        session.add(job)
+        session.flush()
+        session.add_all(
+            [
+                JobStep(
+                    job_id=job.id,
+                    step=StepName.IDEA,
+                    attempt=1,
+                    status=StepStatus.FAILED,
+                    error="model unloaded",
+                ),
+                JobStep(job_id=job.id, step=StepName.IDEA, attempt=2, status=StepStatus.DONE),
+            ]
+        )
+        session.flush()
+        summary = _step_summaries(session, [job.id])[job.id]
+    assert (summary.done, summary.total, summary.last_error) == (1, 1, None)

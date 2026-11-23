@@ -35,6 +35,7 @@ from memcraft.models import (
     JobStatus,
     JobStep,
     Passkey,
+    StepName,
     StepStatus,
     User,
     UserRole,
@@ -437,17 +438,24 @@ def _step_summaries(session: Session, job_ids: list[uuid.UUID]) -> dict[uuid.UUI
     steps = session.execute(
         select(JobStep.job_id, JobStep.step, JobStep.ordinal, JobStep.status, JobStep.error)
         .where(JobStep.job_id.in_(job_ids))
-        .order_by(JobStep.created_at, JobStep.id)
+        .order_by(JobStep.created_at, JobStep.attempt, JobStep.id)
     )
+    # Only the newest try of each step counts. Its error shows until a retry succeeds.
+    latest: dict[tuple[uuid.UUID, StepName, int], tuple[StepStatus, str | None]] = {}
     for row in steps:
-        summary = summaries.setdefault(row.job_id, StepSummary())
+        key = (row.job_id, row.step, row.ordinal)
+        error = row.error or (latest[key][1] if key in latest else None)
+        latest[key] = (row.status, error)
+    for (job_id, step, ordinal), (status, error) in latest.items():
+        summary = summaries.setdefault(job_id, StepSummary())
         summary.total += 1
-        if row.status == StepStatus.DONE:
+        if status == StepStatus.DONE:
             summary.done += 1
-        elif row.status == StepStatus.RUNNING:
-            summary.current = f"{row.step.value} {row.ordinal + 1}"
-        if row.error:
-            summary.last_error = row.error
+            continue
+        if status == StepStatus.RUNNING:
+            summary.current = f"{step.value} {ordinal + 1}"
+        if error:
+            summary.last_error = error
     return summaries
 
 
