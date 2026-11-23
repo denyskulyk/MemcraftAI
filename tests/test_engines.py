@@ -26,6 +26,7 @@ from memcraft.engines import (
     register_defaults,
 )
 from memcraft.engines.base import EngineError
+from memcraft.engines.keyframes import reference_size
 from memcraft.models import (
     EngineSlot,
     Job,
@@ -157,6 +158,45 @@ def test_keyframe_binds_references_in_order(client, fake, pictures, tmp_path):
     assert fake.targets == [manifest.outputs["image"].node]
     sampler = next(n for n in graph.values() if n["class_type"] == "KSampler")["inputs"]
     assert (sampler["seed"], sampler["steps"], sampler["cfg"]) == (5, 16, 3.0)
+    # image_1 sets the canvas; the later references go in smaller.
+    assert scaled_to(graph, manifest, "image_1") == (768, 1344)
+    assert {scaled_to(graph, manifest, f"image_{i}") for i in range(2, 5)} == {(512, 896)}
+
+
+def scaled_to(graph, manifest, name):
+    """The width and height the ImageScale after an image input is set to."""
+    loader = manifest.inputs[name].targets[0].node
+    scale = next(
+        node["inputs"]
+        for node in graph.values()
+        if node["class_type"] == "ImageScale" and node["inputs"]["image"] == [loader, 0]
+    )
+    return tuple(
+        graph[scale[side][0]]["inputs"]["value"] if is_link(scale[side]) else scale[side]
+        for side in ("width", "height")
+    )
+
+
+def test_reference_size():
+    assert reference_size(768, 1344, 512 * 896) == (512, 896)
+    assert reference_size(1344, 768, 512 * 896) == (896, 512)
+    assert reference_size(768, 1344, 10**7) == (768, 1344)
+    width, height = reference_size(1024, 1024, 400_000)
+    assert width == height and width % 32 == 0 and abs(width * height - 400_000) < 40_000
+
+
+def test_reference_pixels_none_or_an_older_workflow_keeps_the_canvas_size(pictures):
+    qwen = adapter(QwenImageKeyframes)
+    request = KeyframeRequest(prompt="x", photos=(pictures[0],), seed=1)
+    assert qwen.values(request, ["a.png"])["reference_width"] == 512
+    whole = KeyframeRequest(prompt="x", photos=(pictures[0],), seed=1, reference_pixels=None)
+    assert "reference_width" not in qwen.values(whole, ["a.png"])
+    package = load_workflow(WORKFLOWS / "keyframe-qwen-image-2.1-v1")
+    manifest = json.loads(json.dumps(package.manifest_json))
+    del manifest["inputs"]["reference_width"], manifest["inputs"]["reference_height"]
+    manifest["version"] = 1
+    older = QwenImageKeyframes(package.api_json, manifest)
+    assert not {"reference_width", "reference_height"} & set(older.values(request, ["a.png"]))
 
 
 def test_keyframe_upload_names_come_from_the_content(client, fake, pictures, tmp_path):
@@ -192,7 +232,8 @@ def test_matching_prompt():
         "They jump.", place="A beach.", light="", photos=2, start_reference=True
     )
     assert later.startswith(
-        "Same scene as <image3>: same place, light, camera position and framing"
+        "Same scene as <image3>: same place, light, camera position, shot size and framing, "
+        "and the same objects in the same colours"
     )
     with pytest.raises(LimitError):
         matching_prompt("x", place="", light="", photos=4, start_reference=False)

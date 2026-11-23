@@ -83,11 +83,11 @@
       ],
       "upscale_method": "lanczos",
       "width": [
-        "1",
+        "27",
         0
       ],
       "height": [
-        "2",
+        "28",
         0
       ],
       "crop": "center"
@@ -127,11 +127,11 @@
       ],
       "upscale_method": "lanczos",
       "width": [
-        "1",
+        "27",
         0
       ],
       "height": [
-        "2",
+        "28",
         0
       ],
       "crop": "center"
@@ -171,11 +171,11 @@
       ],
       "upscale_method": "lanczos",
       "width": [
-        "1",
+        "27",
         0
       ],
       "height": [
-        "2",
+        "28",
         0
       ],
       "crop": "center"
@@ -298,6 +298,18 @@
         0
       ],
       "filename_prefix": "memcraft/keyframe"
+    }
+  },
+  "27": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 512
+    }
+  },
+  "28": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 896
     }
   }
 }

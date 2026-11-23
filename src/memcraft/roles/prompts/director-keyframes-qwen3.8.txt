@@ -7,13 +7,14 @@ TITLE: short title
 PEOPLE: for each photo in order "<image1>: the <short visual tag>, <hair, face, clothing>", separated by " | "
 PLACE: one sentence, the place where the video happens; it may differ from the backgrounds of the photos
 LIGHT: one sentence
-CAMERA: one sentence, the camera position and framing, which stay the same in every keyframe
+CAMERA: one sentence: the shot size (close-up, medium shot from the waist up, full body, or wide) and the camera position and height. It never changes: the app repeats this sentence word for word in every keyframe. So choose it for the whole story: if feet, jumping, flying, falling or walking matter in any keyframe, use a full-body shot with room around the people from the start
+PROPS: the objects the story needs (not clothing), each with its colour, material and size, separated by " | ", like "a black umbrella with a curved wooden handle"; "none" if there are none
 KEYFRAME START: the first picture
 KEYFRAME MIDDLE: the picture half way
 KEYFRAME END: the last picture
 $labels
 
-Keyframes: each is 50 to 100 words, and names every person as "the <tag> from <imageN>" with hair, face and clothing, and describes their position, pose and expression. Do not describe the place or the light in the keyframes: the app adds PLACE and LIGHT, and draws the start keyframe first and the others as the same scene. All people are in every keyframe, faces visible, large enough to recognise. Only the action changes between keyframes. Photorealistic, vertical 9:16. Make the gag visible in the pictures: the end keyframe shows the payoff.
+Keyframes: each is 50 to 100 words, and names every person as "the <tag> from <imageN>" with hair, face and clothing, and describes their position, pose and expression. When a keyframe shows a prop, name it with its exact words from PROPS. Do not describe the place, the light or the camera in the keyframes: the app adds PLACE, LIGHT, CAMERA and PROPS, and draws the start keyframe first and the others as the same scene. The camera does not move or zoom: all three keyframes have the same shot size, and everyone stays inside that frame. All people are in every keyframe, faces visible, large enough to recognise. Only the action changes between keyframes. Photorealistic, vertical 9:16. Make the gag visible in the pictures: the end keyframe shows the payoff.
 Runs: one flowing paragraph each, present tense: motion between the keyframes, camera, sound. No cuts. 60 to 110 words.
 Sound in every run: loud, clear sound effects of what happens, and the people's voices with emotion: laughing, shouting, gasping, reacting. Never music: end every run with the sentence "No music."
 Russian speech: write the words in Cyrillic and mark the stressed vowel of every word with more than one syllable with a combining acute accent (U+0301), like кре́сло. Never mark stress with capital letters.

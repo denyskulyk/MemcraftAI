@@ -3,10 +3,16 @@
 Keyframes of one clip must match, or LTX dissolves between them instead of moving (E0.3/E0.4).
 So the start keyframe is drawn first, and middle and end keyframes take it as an extra reference
 with the words of SAME_SCENE. matching_prompt() writes those prefixes.
+
+Every reference adds its pixels to the sequence Qwen-Image samples, so image_1 (the first photo)
+goes in at the canvas size, which sets the size of the picture, and the others at about half a
+megapixel (reference_size()): with two photos and the start keyframe at full size a keyframe took
+173 s instead of about 60.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -19,9 +25,12 @@ NEW_PLACE = (
     "Take only the people (face, hair, clothing) from {photos}. "
 )
 SAME_SCENE = (
-    "Same scene as {start}: same place, light, camera position and framing; only the action "
-    "and expressions change. Faces come from {photos}. "
+    "Same scene as {start}: same place, light, camera position, shot size and framing, and the "
+    "same objects in the same colours; only the action and expressions change. "
+    "Faces come from {photos}. "
 )
+# Pixels of image_2 to image_4; image_1 is drawn at the canvas size.
+REFERENCE_PIXELS = 512 * 896
 DEFAULT_NEGATIVE = (
     "blurry, low quality, deformed face, extra fingers, different person, text, watermark, frame"
 )
@@ -34,6 +43,7 @@ class KeyframeLimits:
     height: int = 1344
     side_divisor: int = 32
     sound: bool = False
+    reference_pixels: int = REFERENCE_PIXELS
 
     def as_json(self) -> dict[str, Any]:
         return {
@@ -41,7 +51,18 @@ class KeyframeLimits:
             "size": [self.width, self.height],
             "side_divisor": self.side_divisor,
             "sound": self.sound,
+            "reference_pixels": self.reference_pixels,
         }
+
+
+def reference_size(width: int, height: int, pixels: int, divisor: int = 32) -> tuple[int, int]:
+    """The size of a later reference: the canvas's aspect at about ``pixels``, sides that
+    divide by ``divisor``, never larger than the canvas."""
+    scale = min(1.0, math.sqrt(pixels / (width * height)))
+    return (
+        max(divisor, round(width * scale / divisor) * divisor),
+        max(divisor, round(height * scale / divisor) * divisor),
+    )
 
 
 @dataclass(frozen=True)
@@ -61,6 +82,8 @@ class KeyframeRequest:
     height: int = 1344
     steps: int = 16
     cfg: float = 3.0
+    # About how many pixels image_2 to image_4 have; None draws them at the canvas size.
+    reference_pixels: int | None = REFERENCE_PIXELS
     # A subfolder of ComfyUI's input and output folders, such as the job id in hex.
     folder: str = "memcraft"
 
@@ -126,6 +149,11 @@ class QwenImageKeyframes(Adapter):
             "height": request.height,
             "prefix": f"{request.folder}/keyframe",
         }
+        # A workflow version from before reference_width draws every reference at the canvas.
+        if request.reference_pixels and "reference_width" in self.manifest.inputs:
+            values["reference_width"], values["reference_height"] = reference_size(
+                request.width, request.height, request.reference_pixels
+            )
         for i, name in enumerate(names, start=1):
             values[f"image_{i}"] = name
         return values

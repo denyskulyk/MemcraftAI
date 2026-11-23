@@ -590,3 +590,72 @@ def test_russian_speech_uses_acute_stress_marks(name):
 def test_stress_marks_survive_the_run_prompt():
     said = 'He shouts "Где моё кре́сло?"'
     assert "кре́сло" in director.run_prompt(said)
+
+
+# Framing: the camera and the props word for word in every keyframe
+
+
+WITH_PROPS = KEYFRAMES_ONE.replace(
+    "CAMERA: Static eye-level medium shot, waist up.",
+    "CAMERA: Static eye-level full-body shot.\n\n"
+    "PROPS: a black umbrella with a curved wooden handle | a small brown paper bag",
+)
+
+
+def test_the_camera_and_the_props_go_into_every_keyframe():
+    # Seen live: a waist-up start, a full-body middle, and a black umbrella that turned red.
+    run_text, calls = runner(WITH_PROPS)
+    plan = direct_keyframes(run_text, kf_prompt(), [PHOTO], "He flies away")
+    assert "PROPS:" in calls[0]["system"] and "word for word" in calls[0]["system"]
+    assert plan.bible["props"] == [
+        "a black umbrella with a curved wooden handle",
+        "a small brown paper bag",
+    ]
+    props = (
+        "Each of these objects is there only once and keeps exactly this look in every picture: "
+        "a black umbrella with a curved "
+        "wooden handle; a small brown paper bag."
+    )
+    for keyframe in plan.keyframes:
+        assert keyframe.action.startswith("Static eye-level full-body shot. The man")
+        assert keyframe.action.endswith(
+            f"{props} Keep every face and identity exactly as in the photos."
+        )
+        assert keyframe.action.count("Static eye-level full-body shot.") == 1
+    assert plan.keyframes[1].references == [1, "start"]
+    assert "shot size" in plan.keyframes[1].prompt(plan.bible)
+    assert plan.problems == []
+
+
+def test_three_people_get_camera_props_and_same_framing():
+    text = THREE_PEOPLE.replace(
+        "**KEYFRAME START:**", "**PROPS:** a tiny red flag on a stick\n**KEYFRAME START:**"
+    )
+    run_text, _ = runner(text)
+    plan = direct_keyframes(run_text, kf_prompt(), [PHOTO] * 3, "Ocean", length=LONG)
+    start, middle, _ = plan.keyframes
+    assert start.action.startswith("Static medium shot from the fountain rim. The woman")
+    assert middle.action.startswith(f"Static medium shot from the fountain rim. {SAME_FRAMING}")
+    assert "a tiny red flag on a stick." in middle.action
+
+
+@pytest.mark.parametrize("value", ["none", "None.", "n/a", " | "])
+def test_no_props(value):
+    assert director.props_of(value) == []
+
+
+def test_an_answer_without_props_still_parses():
+    # Jobs directed with an older prompt version, which did not ask for PROPS.
+    run_text, _ = runner(KEYFRAMES_ONE)
+    plan = direct_keyframes(run_text, kf_prompt(), [PHOTO], "He flies away")
+    assert plan.bible["props"] == []
+    assert all("these objects" not in k.action for k in plan.keyframes)
+    assert plan.keyframes[2].action.startswith("Static eye-level medium shot, waist up. The man")
+
+
+def test_props_do_not_run_into_the_camera():
+    found, problems = parse_sections(
+        WITH_PROPS, [*KEYFRAME_LABELS, "RUN 1"], director.OPTIONAL_KEYFRAME_LABELS
+    )
+    assert found["CAMERA"] == "Static eye-level full-body shot."
+    assert found["PROPS"].startswith("a black umbrella") and problems == []

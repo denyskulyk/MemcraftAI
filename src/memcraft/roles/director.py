@@ -8,10 +8,12 @@ costs one retry with a new seed. Qwen writes "image1" where the keyframe model n
 Two regimes:
 - multishot: one photo is the first frame; one prompt per LTX run, always a single take (with
   2 shots the faces held in 2 of 4 E0 videos).
-- keyframes: a bible (people, place, light, camera), three keyframe prompts with their frame
-  positions, and one prompt per LTX run between them. Middle and end take the start keyframe as
-  an extra reference only for 1 or 2 people; with 3 it lost a face, so they come from the
-  photos only.
+- keyframes: a bible (people, place, light, camera, props), three keyframe prompts with their
+  frame positions, and one prompt per LTX run between them. Middle and end take the start
+  keyframe as an extra reference only for 1 or 2 people; with 3 it lost a face, so they come
+  from the photos only. The CAMERA sentence (shot size and position) and the PROPS with their
+  colours go word for word into every keyframe: in the first real runs a waist-up start was
+  followed by a full-body middle, and a black umbrella turned red.
 
 Never music: every run prompt loses any sentence that mentions music and ends on "No music."
 (no_music()), whatever the prompt text asked for.
@@ -46,6 +48,11 @@ CHAINED_PEOPLE = 2
 SAME_FRAMING = (
     "Same place, light, camera position and framing as the start of this scene; only the "
     "action and expressions change."
+)
+# Said in every keyframe after the action when the bible lists props.
+PROPS_SENTENCE = (
+    "Each of these objects is there only once and keeps exactly this look in every picture: "
+    "{props}."
 )
 NO_MUSIC = "No music."
 MAX_RUN_WORDS = 220
@@ -140,14 +147,17 @@ def _clean_value(value: str) -> str:
     return value
 
 
-def parse_sections(text: str, labels: Sequence[str]) -> tuple[dict[str, str], list[str]]:
+def parse_sections(
+    text: str, labels: Sequence[str], optional: Sequence[str] = ()
+) -> tuple[dict[str, str], list[str]]:
     """Labelled sections by their label in capitals, and problems that did not stop parsing.
 
-    Raises SectionsMissingError if a label is missing or empty.
+    Raises SectionsMissingError if a label is missing or empty; an ``optional`` label (one
+    that older prompt versions do not ask for) may be missing.
     """
     clean = _FENCE.sub("", _THINK.sub("", text))
-    wanted = {" ".join(label.upper().split()) for label in labels}
-    pieces = _label_pattern(labels).split(clean)
+    wanted = {" ".join(label.upper().split()) for label in (*labels, *optional)}
+    pieces = _label_pattern([*labels, *optional]).split(clean)
     found: dict[str, str] = {}
     problems: list[str] = []
     for index in range(1, len(pieces) - 1, 2):
@@ -344,17 +354,18 @@ def _ask(
     labels: Sequence[str],
     seed: int,
     clock: Callable[[], float],
+    optional: Sequence[str] = (),
 ) -> tuple[dict[str, str], list[str], str, float, int, int]:
     """Sections, problems, raw text, seconds, attempts and the seed that worked."""
     started = clock()
     try:
         raw = run_text(system, user, images, seed)
-        found, problems = parse_sections(raw, labels)
+        found, problems = parse_sections(raw, labels, optional)
         return found, problems, raw, round(clock() - started, 1), 1, seed
     except SectionsMissingError as first:
         # One retry with a new seed; a second miss goes to the caller with its raw text.
         raw = run_text(system, user, images, seed + 1)
-        found, problems = parse_sections(raw, labels)
+        found, problems = parse_sections(raw, labels, optional)
         problems.insert(0, f"first answer: {first}")
         return found, problems, raw, round(clock() - started, 1), 2, seed + 1
 
@@ -439,6 +450,32 @@ KEYFRAME_LABELS = (
     "KEYFRAME MIDDLE",
     "KEYFRAME END",
 )
+# Asked for since director-keyframes v2; a job directed with an older prompt has no props.
+OPTIONAL_KEYFRAME_LABELS = ("PROPS",)
+_NO_PROPS = re.compile(r"^(?:none|no props|n/?a|-)\.?$", re.I)
+
+
+def props_of(value: str) -> list[str]:
+    """The props of the PROPS section: split on "|" (or ";"), "none" is no props."""
+    parts = [" ".join(part.split()).strip(" .;") for part in re.split(r"[|;]", value)]
+    return [part for part in parts if part and not _NO_PROPS.match(part)]
+
+
+def framed(
+    action: str, bible: dict[str, Any], *, same_framing: bool = False, tail: str = ""
+) -> str:
+    """A keyframe's action with the bible's camera before it and the props after it, word for
+    word the same in every keyframe, so the shot size and the objects cannot drift."""
+    pieces = [bible.get("camera", "")]
+    if same_framing:
+        pieces.append(SAME_FRAMING)
+    pieces.append(action)
+    if bible.get("props"):
+        pieces.append(PROPS_SENTENCE.format(props="; ".join(bible["props"])))
+    body = " ".join(piece.strip() for piece in pieces if piece and piece.strip())
+    if tail and tail.lower() not in body.lower():
+        body = f"{body} {tail}"
+    return body
 
 
 def keyframe_frames(counts: Sequence[int]) -> dict[str, int]:
@@ -480,7 +517,7 @@ def direct_keyframes(
     user = fill(found["user"], {"idea": idea.strip()})
     labels = [*KEYFRAME_LABELS, *(f"RUN {i + 1}" for i in range(len(counts)))]
     sections, problems, raw, seconds, attempts, used = _ask(
-        run_text, system, user, list(photos), labels, seed, clock
+        run_text, system, user, list(photos), labels, seed, clock, OPTIONAL_KEYFRAME_LABELS
     )
     sections = {label: image_tags(value) for label, value in sections.items()}
     count = len(photos)
@@ -493,6 +530,7 @@ def direct_keyframes(
         "place": sections["PLACE"],
         "light": sections["LIGHT"],
         "camera": sections["CAMERA"],
+        "props": props_of(sections.get("PROPS", "")),
     }
     if len(bible["people"]) != count:
         problems.append(f"PEOPLE lists {len(bible['people'])} people for {count} photos")
@@ -505,12 +543,7 @@ def direct_keyframes(
     for index, at in enumerate(("start", "middle", "end")):
         body, notes = name_people(sections[f"KEYFRAME {at.upper()}"], bible["people"], count)
         problems += [f"KEYFRAME {at.upper()}: {note}" for note in notes]
-        if at == "start":
-            body = f"{bible['camera']} {body}"
-        elif not chained:
-            body = f"{bible['camera']} {SAME_FRAMING} {body}"
-        if tail and tail.lower() not in body.lower():
-            body = f"{body} {tail}"
+        body = framed(body, bible, same_framing=at != "start" and not chained, tail=tail)
         keyframes.append(
             Keyframe(
                 at=at,
