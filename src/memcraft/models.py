@@ -138,6 +138,13 @@ def _text_enum(kind: type[enum.StrEnum], name: str) -> Enum:
     )
 
 
+def _one_active(table: str, *columns: str) -> Index:
+    active = text("status = 'active'")
+    return Index(
+        f"uq_{table}_active", *columns, unique=True, postgresql_where=active, sqlite_where=active
+    )
+
+
 class Base(DeclarativeBase):
     metadata = MetaData(
         naming_convention={
@@ -180,7 +187,7 @@ class User(Base):
 
 class WorkflowVersion(Base):
     __tablename__ = "workflow_versions"
-    __table_args__ = (UniqueConstraint("name", "version"),)
+    __table_args__ = (UniqueConstraint("name", "version"), _one_active("workflow_versions", "name"))
 
     id: Mapped[uuid.UUID] = _id()
     name: Mapped[str]
@@ -196,7 +203,10 @@ class WorkflowVersion(Base):
 
 class PromptVersion(Base):
     __tablename__ = "prompt_versions"
-    __table_args__ = (UniqueConstraint("role", "model", "version"),)
+    __table_args__ = (
+        UniqueConstraint("role", "model", "version"),
+        _one_active("prompt_versions", "role", "model"),
+    )
 
     id: Mapped[uuid.UUID] = _id()
     role: Mapped[PromptRole] = mapped_column(_text_enum(PromptRole, "role"))
@@ -214,7 +224,10 @@ class EngineVersion(Base):
     """One model in a swappable slot. "Off" for the critic is simply no engine on the job."""
 
     __tablename__ = "engines"
-    __table_args__ = (UniqueConstraint("slot", "name", "version"),)
+    __table_args__ = (
+        UniqueConstraint("slot", "name", "version"),
+        _one_active("engines", "slot", "name"),
+    )
 
     id: Mapped[uuid.UUID] = _id()
     slot: Mapped[EngineSlot] = mapped_column(_text_enum(EngineSlot, "slot"))
@@ -235,7 +248,7 @@ class EngineVersion(Base):
 
 class Recipe(Base):
     __tablename__ = "recipes"
-    __table_args__ = (UniqueConstraint("name", "version"),)
+    __table_args__ = (UniqueConstraint("name", "version"), _one_active("recipes", "name"))
 
     id: Mapped[uuid.UUID] = _id()
     name: Mapped[str]
@@ -355,6 +368,8 @@ class Asset(Base):
         ForeignKey("job_steps.id", ondelete="SET NULL")
     )
     kind: Mapped[AssetKind] = mapped_column(_text_enum(AssetKind, "kind"))
+    # Which photo, keyframe or clip of the job this is, starting at 0.
+    ordinal: Mapped[int] = mapped_column(server_default=text("0"))
     store: Mapped[AssetStore] = mapped_column(_text_enum(AssetStore, "store"))
     # Relative to the store's folder, with forward slashes: the web container and Windows
     # see that folder at different places.

@@ -9,6 +9,7 @@ backlog.
 | `src/memcraft` | Python code: settings, database, schema (`models.py`), file store (`storage.py`), web app |
 | `frontend` | Plain HTML, CSS and JavaScript served by the web app. No Node, no build step |
 | `migrations` | Alembic migrations; `0001` is schema v1 |
+| `workflows` | ComfyUI graphs with a manifest that maps names to nodes |
 | `deploy` | Postgres container, autostart, migrate, backup and restore scripts |
 | `tests` | `pytest` tests; those marked `postgres` need `MEMCRAFT_TEST_DATABASE_URL` |
 | `data`, `backups` | Local files and dumps, never in git |

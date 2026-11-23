@@ -58,12 +58,18 @@ def test_backlog_tables_exist():
 def test_migration_matches_models():
     output = io.StringIO()
     command.upgrade(alembic_config("postgresql+psycopg://x@x/x", output), "head", sql=True)
+    sql = output.getvalue()
     migrated = {
         s
-        for s in statements(output.getvalue())
-        if any(x.startswith(("CREATE TABLE", "CREATE INDEX")) for x in s)
+        for s in statements(sql)
+        if any(x.startswith(("CREATE TABLE", "CREATE INDEX", "CREATE UNIQUE INDEX")) for x in s)
         and not any("alembic_version" in x for x in s)
     }
+    # A column added later belongs to the statement that created its table.
+    for table, column in re.findall(r"ALTER TABLE (\w+) ADD COLUMN (.+);", sql):
+        [created] = [s for s in migrated if f"CREATE TABLE {table} (" in s]
+        migrated.remove(created)
+        migrated.add(tuple(sorted((*created, column))))
     dialect = postgresql.dialect()
     ddl = []
     for table in Base.metadata.sorted_tables:

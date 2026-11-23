@@ -4,17 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MemcraftAI</title>
+    <script src="/app.js" defer></script>
   </head>
   <body>
     <h1>MemcraftAI</h1>
-    <p id="health">Checking the app…</p>
-    <script>
-      fetch("/health")
-        .then((r) => r.json())
-        .then((h) => {
-          document.getElementById("health").textContent =
-            `App ${h.version}, database ${h.database}`;
-        });
-    </script>
+    <p id="status" role="status">Checking who you are…</p>
+    <ul id="jobs"></ul>
   </body>
 </html>

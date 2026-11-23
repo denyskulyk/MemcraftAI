@@ -11,6 +11,17 @@ class Settings(BaseSettings):
     shared_dir: Path = Path("data/shared")
     # None in the web container, which does not see this folder.
     private_dir: Path | None = None
+    # Names the browser may use, separated by commas. Add the PC's Tailscale name.
+    allowed_hosts: str = "localhost,127.0.0.1"
+    # This Tailscale login becomes the admin on its first visit. Empty: nobody does.
+    admin_login: str = ""
+
+    @property
+    def allowed_host_list(self) -> list[str]:
+        hosts = [host.strip().lower() for host in self.allowed_hosts.split(",") if host.strip()]
+        if any("*" in host for host in hosts):
+            raise ValueError("MEMCRAFT_ALLOWED_HOSTS must not contain wildcards")
+        return hosts
 
 
 @lru_cache
