@@ -40,11 +40,12 @@ RENDER_WEIGHTS: Mapping[JobRegime, Mapping[StepName, float]] = {
         StepName.CHECK: 0.05,
         StepName.JOIN: 0.10,
     },
+    # The keyframes are checked before LTX loads, so CHECK comes before CLIP here.
     JobRegime.KEYFRAMES: {
         StepName.SCENARIO: 0.05,
         StepName.KEYFRAME: 0.25,
-        StepName.CLIP: 0.55,
         StepName.CHECK: 0.05,
+        StepName.CLIP: 0.55,
         StepName.JOIN: 0.10,
     },
 }

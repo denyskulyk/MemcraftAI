@@ -506,6 +506,22 @@ def test_the_dry_command(engine, session, capsys):
 
     job = new_job(session, S.IDEA_QUEUED)
     url = engine.url.render_as_string(hide_password=False)
-    assert main(["--database-url", url, "--once", "--no-schedule", "--step-seconds", "0"]) == 0
+    assert (
+        main(["--dry", "--database-url", url, "--once", "--no-schedule", "--step-seconds", "0"])
+        == 0
+    )
     assert "worked on 2 claims" in capsys.readouterr().out
     assert status_of(session, job.id) is S.PREVIEW_READY
+
+
+def test_step_times_are_real(engine, session):
+    def slow(ctx):
+        ctx.session.connection()  # the step's transaction begins here
+        time.sleep(0.3)
+
+    job = new_job(session)
+    worker(engine, registry(join=Scripted(slow))).drain()
+    row = session.scalars(
+        select(JobStep).where(JobStep.job_id == job.id, JobStep.step == StepName.JOIN)
+    ).one()
+    assert row.finished_at - row.started_at >= timedelta(seconds=0.3)

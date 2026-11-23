@@ -337,7 +337,7 @@ class Worker:
                 # Left by a worker that died: that attempt failed.
                 row.status = StepStatus.FAILED
                 row.error = INTERRUPTED
-                row.finished_at = func.now()
+                row.finished_at = _clock(session)
         failed = [r for r in rows if r.status is StepStatus.FAILED and r.inputs_hash == digest]
         if len(failed) >= self.config.max_attempts:
             session.commit()
@@ -351,7 +351,7 @@ class Worker:
             status=StepStatus.RUNNING,
             inputs=dict(planned.inputs),
             inputs_hash=digest,
-            started_at=func.now(),
+            started_at=_clock(session),
         )
         session.add(row)
         session.flush()
@@ -456,7 +456,7 @@ class Worker:
         row.output = dict(output) if output is not None else None
         row.progress = 1.0
         row.error = None
-        row.finished_at = func.now()
+        row.finished_at = _clock(session)
         session.flush()
         if not self._touch(session, job_id, running):
             raise _LostClaimError("the job is not ours any more")
@@ -468,7 +468,9 @@ class Worker:
             session.execute(
                 update(JobStep)
                 .where(JobStep.id == step_id, JobStep.status == StepStatus.RUNNING)
-                .values(status=StepStatus.FAILED, error=message[:MAX_ERROR], finished_at=func.now())
+                .values(
+                    status=StepStatus.FAILED, error=message[:MAX_ERROR], finished_at=_clock(session)
+                )
             )
             session.commit()
         except SQLAlchemyError:
@@ -588,6 +590,14 @@ def _baseline(running: JobStatus, job: Job, pending: Sequence[PlannedStep]) -> f
         weights_for(running, job.regime), first.step, first.ordinal, first.count, 0
     )
     return max(0.0, value)
+
+
+def _clock(session: Session) -> Any:
+    """The time now. Postgres's now() is when the transaction began, which for a step's
+    session can be the start of the step."""
+    if session.get_bind().dialect.name == "postgresql":
+        return func.clock_timestamp()
+    return func.now()
 
 
 def _describe(error: BaseException) -> str:

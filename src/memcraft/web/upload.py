@@ -25,6 +25,7 @@ from starlette.formparsers import MultiPartException, MultiPartParser
 from memcraft import photos, queue
 from memcraft.models import Job, JobLane, JobLength, JobQuality, JobRegime, JobStatus, User
 from memcraft.photos import CropBox, FileSizeError, PhotoCountError, PhotoError
+from memcraft.pipeline.regime import regime_for
 from memcraft.storage import FileStore, StorageError
 from memcraft.web.auth import ApprovedUser, SessionDep, StoreDep
 
@@ -61,15 +62,6 @@ TOO_MANY_JOBS = (
     f"You already have {MAX_OPEN_JOBS} videos on the way. "
     "Please wait until one of them is ready, then start the next."
 )
-
-
-def regime_for(photo_count: int, length: JobLength) -> JobRegime:
-    """The one place that decides how a video is made."""
-    if not 1 <= photo_count <= photos.MAX_PHOTOS:
-        raise ValueError(f"photo_count must be 1 to {photos.MAX_PHOTOS}")
-    if photo_count == 1 and length == JobLength.SHORT:
-        return JobRegime.MULTISHOT
-    return JobRegime.KEYFRAMES
 
 
 class RegimeNote(BaseModel):
