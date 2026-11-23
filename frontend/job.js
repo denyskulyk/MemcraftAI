@@ -222,6 +222,20 @@ const SHARES = {
 };
 const sharedFiles = new Map(); // asset id -> File, so that a second tap shares at once
 
+// One of these goes with every share, with the app's own address at the end.
+const SHARE_LINES = [
+  "Made with MemcraftAI ✨🎬",
+  "Cooked this up in MemcraftAI 🔥👉",
+  "Tried MemcraftAI and made this 😂",
+  "Turned one photo into this with MemcraftAI 🤯",
+  "MemcraftAI did this to my photo 😅🎬",
+];
+
+function shareText() {
+  const line = SHARE_LINES[Math.floor(Math.random() * SHARE_LINES.length)];
+  return line + " " + location.origin + "/";
+}
+
 function canShareFiles(files) {
   if (!navigator.share || !navigator.canShare) return false;
   try {
@@ -272,7 +286,8 @@ async function shareVideo(kind) {
     if (!canShareFiles([file])) return downloadInstead(asset, hint);
   }
   try {
-    await navigator.share({ files: [file], title: share.title });
+    const text = shareText();
+    await navigator.share({ files: [file], title: text, text });
   } catch (error) {
     if (error.name === "AbortError") return; // the friend closed the share sheet
     if (error.name === "NotAllowedError") {
