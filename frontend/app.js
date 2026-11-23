@@ -35,7 +35,7 @@ function jobItem(job) {
   if (job.idea_text) {
     const idea = document.createElement("span");
     idea.className = "idea-line";
-    idea.textContent = job.idea_text;
+    idea.textContent = withNames(job.idea_text, job.cast);
     item.append(idea);
   }
   if (job.video_id) {
