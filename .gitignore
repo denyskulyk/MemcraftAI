@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# secrets and data never go into git
+.env
+data/
+backups/
+e0-spike/
