@@ -27,13 +27,14 @@ from __future__ import annotations
 import random
 import re
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from memcraft import cast as casting
 from memcraft.engines.keyframes import matching_prompt
 from memcraft.models import JobLength, PromptRole, PromptVersion
-from memcraft.roles.seed import QWEN, fill, parts, prompt_file
+from memcraft.roles.seed import QWEN, fill, parts, prompt_file, read_prompt
 
 # (system prompt, user text, images in order, seed) -> Qwen's raw answer
 type TextRunner = Callable[[str, str, Sequence[bytes], int], str]
@@ -262,6 +263,89 @@ def _cut_words(prompt: str) -> int:
     return len(re.findall(r"\bcuts?\b|\bdissolves?\b|\btransitions?\s+to\b", prompt, re.I))
 
 
+# The cast: people the idea names as <denys> or <person2>.
+
+
+def cast_text(
+    found: dict[str, str],
+    role: PromptRole,
+    cast: Sequence[Mapping[str, Any]] | None,
+    idea: str,
+) -> str:
+    """The CAST section for the user text, or "" when the idea names no one. A prompt version
+    from before the cast takes the part from the shipped prompt file."""
+    lines = casting.director_lines(cast, idea)
+    if not lines:
+        return ""
+    part = found.get("cast") or parts(read_prompt(role, QWEN))["cast"]
+    return fill(part, {"lines": "\n".join(lines)})
+
+
+def _user_text(
+    found: dict[str, str],
+    role: PromptRole,
+    cast: Sequence[Mapping[str, Any]] | None,
+    idea: str,
+) -> str:
+    """The idea, whole, and the CAST section when the idea names people."""
+    user = fill(found["user"], {"idea": idea.strip()})
+    extra = cast_text(found, role, cast, idea)
+    return f"{user}\n\n{extra}" if extra else user
+
+
+def distinct_people(used: Sequence[Mapping[str, Any]]) -> list[list[str]]:
+    """The tags of each person of the cast once, in cast order: <person2> and <maksym> may be
+    the same person."""
+    people: dict[tuple[Any, ...], list[str]] = {}
+    for entry in used:
+        photo = entry.get("photo")
+        key = (photo, entry["position"]) if photo is not None else ("tag", entry["tag"])
+        people.setdefault(key, []).append(entry["tag"])
+    return list(people.values())
+
+
+def cast_people(
+    cast: Sequence[Mapping[str, Any]] | None, idea: str, people: Sequence[dict[str, Any]]
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    """Each tag of the idea (casefolded) with its entry of PEOPLE, and problems. The director
+    lists the people of the cast first, in cast order."""
+    used = casting.used(cast, idea)
+    found: dict[str, dict[str, Any]] = {}
+    problems = []
+    for index, tags in enumerate(distinct_people(used)):
+        if index >= len(people):
+            problems.append(f"PEOPLE does not list <{tags[0]}>")
+            continue
+        for tag in tags:
+            found[tag.casefold()] = people[index]
+    return found, problems
+
+
+def replace_cast_tags(
+    text: str, mapping: Mapping[str, Mapping[str, Any]], *, with_image: bool
+) -> tuple[str, int]:
+    """The text with every <denys> the director left in it replaced by that person's visual
+    tag from PEOPLE ("the man in the red jacket"), with " from <imageN>" for a keyframe.
+    Returns the text and how many tags were replaced."""
+    count = 0
+
+    def visual(match: re.Match[str]) -> str:
+        nonlocal count
+        person = mapping.get(match.group(1).casefold())
+        if person is None or not person.get("tag"):
+            return match.group(0)
+        count += 1
+        tag = person["tag"]
+        if with_image and person.get("image"):
+            tag = f"{tag} from <image{person['image']}>"
+        before = text[: match.start()].rstrip()
+        if not before or before[-1] in ".!?":
+            tag = tag[0].upper() + tag[1:]
+        return tag
+
+    return casting.TAG.sub(visual, text), count
+
+
 # Results
 
 
@@ -381,6 +465,7 @@ def direct_multishot(
     frames: int | None = None,
     seed: int = 7,
     clock: Callable[[], float] = time.monotonic,
+    cast: Sequence[Mapping[str, Any]] | None = None,
 ) -> MultishotPlan:
     if not 1 <= shots <= MAX_SHOTS:
         raise DirectorError("a multishot video is a single take")
@@ -403,15 +488,20 @@ def direct_multishot(
             "words": MAX_RUN_WORDS,
         },
     )
-    user = fill(found["user"], {"idea": idea.strip()})
+    user = _user_text(found, PromptRole.DIRECTOR_MULTISHOT, cast, idea)
     labels = ["TITLE", "PEOPLE"] + [f"RUN {i + 1}" for i in range(len(counts))]
     sections, problems, raw, seconds, attempts, used = _ask(
         run_text, system, user, [photo], labels, seed, clock
     )
+    people = _people(sections["PEOPLE"], with_images=False)
+    mapping, notes = cast_people(cast, idea, people)
+    problems += notes
     seeds = render_seeds(seed, len(counts))
     runs = []
     for index, (count, start) in enumerate(zip(counts, run_starts(counts), strict=True)):
-        text = sections[f"RUN {index + 1}"]
+        text, replaced = replace_cast_tags(sections[f"RUN {index + 1}"], mapping, with_image=False)
+        if replaced:
+            problems.append(f"RUN {index + 1}: {replaced} name tags replaced by visual tags")
         cuts = _cut_words(text)
         if cuts and not re.search(r"\bno cuts?\b", text, re.I):
             problems.append(f"RUN {index + 1}: {cuts} cut words in a single take")
@@ -428,7 +518,7 @@ def direct_multishot(
         )
     return MultishotPlan(
         title=sections["TITLE"],
-        people=_people(sections["PEOPLE"], with_images=False),
+        people=people,
         shots=shots,
         frames=frames,
         runs=runs,
@@ -496,6 +586,7 @@ def direct_keyframes(
     frames: int | None = None,
     seed: int = 7,
     clock: Callable[[], float] = time.monotonic,
+    cast: Sequence[Mapping[str, Any]] | None = None,
 ) -> KeyframePlan:
     if not 1 <= len(photos) <= 3:
         raise DirectorError("the keyframes regime takes 1 to 3 photos")
@@ -514,7 +605,7 @@ def direct_keyframes(
             "labels": fill(found["labels_two" if two else "labels_one"]),
         },
     )
-    user = fill(found["user"], {"idea": idea.strip()})
+    user = _user_text(found, PromptRole.DIRECTOR_KEYFRAMES, cast, idea)
     labels = [*KEYFRAME_LABELS, *(f"RUN {i + 1}" for i in range(len(counts)))]
     sections, problems, raw, seconds, attempts, used = _ask(
         run_text, system, user, list(photos), labels, seed, clock, OPTIONAL_KEYFRAME_LABELS
@@ -532,8 +623,20 @@ def direct_keyframes(
         "camera": sections["CAMERA"],
         "props": props_of(sections.get("PROPS", "")),
     }
-    if len(bible["people"]) != count:
-        problems.append(f"PEOPLE lists {len(bible['people'])} people for {count} photos")
+    used_cast = casting.used(cast, idea)
+    if used_cast:
+        # A photo may hold several people: PEOPLE is checked against the cast instead.
+        mapping, notes = cast_people(cast, idea, bible["people"])
+        problems += notes
+        for entry in used_cast:
+            person = mapping.get(entry["tag"].casefold())
+            photo = entry.get("photo")
+            if person is not None and photo is not None and person.get("image") != photo:
+                problems.append(f"PEOPLE puts <{entry['tag']}> in the wrong photo")
+    else:
+        mapping = {}
+        if len(bible["people"]) != count:
+            problems.append(f"PEOPLE lists {len(bible['people'])} people for {count} photos")
     # With 3 people the start keyframe as a reference lost a face and added noise (E0).
     chained = (len(bible["people"]) or count) <= CHAINED_PEOPLE
     seeds = render_seeds(seed, 3 + len(counts))
@@ -541,7 +644,12 @@ def direct_keyframes(
     tail = fill(found["suffix"])
     keyframes = []
     for index, at in enumerate(("start", "middle", "end")):
-        body, notes = name_people(sections[f"KEYFRAME {at.upper()}"], bible["people"], count)
+        body, replaced = replace_cast_tags(
+            sections[f"KEYFRAME {at.upper()}"], mapping, with_image=True
+        )
+        if replaced:
+            problems.append(f"KEYFRAME {at.upper()}: {replaced} name tags replaced")
+        body, notes = name_people(body, bible["people"], count)
         problems += [f"KEYFRAME {at.upper()}: {note}" for note in notes]
         body = framed(body, bible, same_framing=at != "start" and not chained, tail=tail)
         keyframes.append(
@@ -565,9 +673,12 @@ def direct_keyframes(
             if starts[index] <= frame <= starts[index] + run_count - 1
             and not (index > 0 and frame == starts[index])
         ]
+        text, replaced = replace_cast_tags(sections[f"RUN {index + 1}"], mapping, with_image=False)
+        if replaced:
+            problems.append(f"RUN {index + 1}: {replaced} name tags replaced by visual tags")
         runs.append(
             Run(
-                prompt=run_prompt(sections[f"RUN {index + 1}"]),
+                prompt=run_prompt(text),
                 frames=run_count,
                 seed=seeds[3 + index],
                 start=starts[index],

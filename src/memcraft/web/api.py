@@ -73,6 +73,8 @@ class Me(_Out):
 class JobOut(_Out):
     id: uuid.UUID
     idea_text: str | None
+    # The people the idea names, so that a page can show <person2> by its name.
+    cast: list[dict[str, Any]] | None = None
     length: JobLength
     quality: JobQuality
     regime: JobRegime | None

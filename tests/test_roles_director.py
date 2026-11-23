@@ -659,3 +659,139 @@ def test_props_do_not_run_into_the_camera():
     )
     assert found["CAMERA"] == "Static eye-level full-body shot."
     assert found["PROPS"].startswith("a black umbrella") and problems == []
+
+
+# The cast: people the idea names.
+
+CAST = [
+    {"tag": "denys", "photo": 1, "position": 1},
+    {"tag": "maksym", "photo": 1, "position": 2},
+    {"tag": "olga", "photo": 2, "position": 1},
+]
+CAST_IDEA = '<denys> says "Hi!", <maksym> answers "Hi to you too", and <olga> laughs.'
+
+# Two photos, three people; the director left two name tags in its answer.
+KEYFRAMES_CAST = """TITLE: Hello Chain
+PEOPLE: <image1>: the man in the red jacket, short dark hair
+| <image1>: the man in the grey hoodie, buzz cut
+| <image2>: the woman in the green coat, long blond hair
+PLACE: A sunny street corner.
+LIGHT: Midday sun.
+CAMERA: Static full-body shot at eye level.
+KEYFRAME START: The man in the red jacket from <image1> waves at the man in the grey hoodie
+from <image1>; the woman in the green coat from <image2> watches.
+KEYFRAME MIDDLE: <maksym> waves back, grinning, while the woman in the green coat
+from <image2> covers her mouth.
+KEYFRAME END: The woman in the green coat from <image2> laughs, the man in the red jacket
+from <image1> and the man in the grey hoodie from <image1> shrug.
+RUN 1: The man in the red jacket waves and says "Hi!". <maksym> answers "Hi to you too".
+The woman in the green coat bursts out laughing. Street noise.
+"""
+
+
+def test_a_full_length_idea_reaches_the_director_whole():
+    from memcraft.web.upload import MAX_IDEA
+
+    idea = ("<denys> greets <maksym>. " * 60)[
+        : MAX_IDEA - 40
+    ] + " the very last detail: a red kite."
+    idea = idea + "x" * (MAX_IDEA - len(idea))
+    assert len(idea) == MAX_IDEA
+    run_text, calls = runner(KEYFRAMES_CAST)
+    direct_keyframes(run_text, kf_prompt(), [PHOTO, PHOTO], idea, cast=CAST, clock=clock())
+    user = calls[0]["prompt"]
+    assert user.startswith(f"Idea: {idea}\n\nCAST:") and "a red kite" in user
+    run_text, calls = runner(MULTISHOT_ONE)
+    direct_multishot(run_text, ms_prompt(), PHOTO, idea, cast=CAST[:2])
+    assert calls[0]["prompt"].startswith(f"Idea: {idea}\n\nCAST:")
+    # And the text graph puts it in ComfyUI's prompt input as it is.
+    graph = text_graph(load_workflow(WORKFLOW), "sys", calls[0]["prompt"], ["p.png"], 1)
+    (generate,) = [node for node in graph.values() if node["class_type"] == "TextGenerateV2"]
+    assert generate["inputs"]["prompt"] == calls[0]["prompt"]
+
+
+def test_the_director_gets_a_cast_and_writes_visual_tags():
+    run_text, calls = runner(KEYFRAMES_CAST)
+    plan = direct_keyframes(
+        run_text, kf_prompt(), [PHOTO, PHOTO], CAST_IDEA, cast=CAST, clock=clock()
+    )
+    user = calls[0]["prompt"]
+    assert user.startswith(f"Idea: {CAST_IDEA}\n\nCAST: ")
+    assert "<denys> = <image1>, the 1st of 2 people from the left" in user
+    assert "<maksym> = <image1>, the 2nd of 2 people from the left" in user
+    assert "<olga> = <image2>, the person in it" in user
+    assert "the man in the red jacket says" in user and "Keep the spoken words" in user
+    assert "acute accent" in calls[0]["system"]  # the Russian speech rule stays
+    assert [(p["image"], p["tag"]) for p in plan.bible["people"]] == [
+        (1, "the man in the red jacket"),
+        (1, "the man in the grey hoodie"),
+        (2, "the woman in the green coat"),
+    ]
+    middle = plan.keyframes[1].action
+    assert "The man in the grey hoodie from <image1> waves back" in middle
+    assert "<maksym>" not in middle
+    (run,) = plan.runs
+    assert "<" not in run.prompt and "maksym" not in run.prompt.lower()
+    assert '. The man in the grey hoodie answers "Hi to you too".' in run.prompt
+    assert plan.problems == [
+        "KEYFRAME MIDDLE: 1 name tags replaced",
+        "RUN 1: 1 name tags replaced by visual tags",
+    ]
+    # Three people over two photos: middle and end come from the photos only.
+    assert plan.keyframes[1].references == [1, 2]
+
+
+def test_a_person_in_the_wrong_photo_or_missing_is_a_problem():
+    answer = KEYFRAMES_CAST.replace(
+        "\n| <image2>: the woman in the green coat, long blond hair", ""
+    ).replace("<image1>: the man in the grey hoodie", "<image2>: the man in the grey hoodie")
+    run_text, _ = runner(answer)
+    plan = direct_keyframes(
+        run_text, kf_prompt(), [PHOTO, PHOTO], CAST_IDEA, cast=CAST, clock=clock()
+    )
+    assert "PEOPLE does not list <olga>" in plan.problems
+    assert "PEOPLE puts <maksym> in the wrong photo" in plan.problems
+
+
+def test_without_tags_the_director_call_is_as_before():
+    run_text, calls = runner(KEYFRAMES_ONE)
+    plan = direct_keyframes(
+        run_text, kf_prompt(), [PHOTO], "He flies away", cast=CAST, clock=clock()
+    )
+    assert calls[0]["prompt"] == "Idea: He flies away"
+    assert plan.problems == []
+    run_text, calls = runner(MULTISHOT_ONE)
+    direct_multishot(run_text, ms_prompt(), PHOTO, "Toast flies", cast=CAST)
+    assert calls[0]["prompt"] == "Idea: Toast flies"
+
+
+def test_a_multishot_cast():
+    answer = MULTISHOT_ONE.replace(
+        "PEOPLE: the woman in the yellow sweater: black bob",
+        "PEOPLE: the man in the red jacket: short hair"
+        " | the woman in the yellow sweater: black bob",
+    ).replace('She sips her tea and says "Fine."', '<maksym> sips her tea and says "Fine."')
+    cast = [
+        {"tag": "denys", "photo": 1, "position": 1},
+        {"tag": "maksym", "photo": 1, "position": 2},
+    ]
+    run_text, calls = runner(answer)
+    plan = direct_multishot(run_text, ms_prompt(), PHOTO, "<maksym> and <denys> wait", cast=cast)
+    assert "<image1> is the photo" in calls[0]["prompt"]
+    assert "<denys> = <image1>, the 1st of 2 people from the left" in calls[0]["prompt"]
+    (run,) = plan.runs
+    assert 'The woman in the yellow sweater sips her tea and says "Fine."' in run.prompt
+
+
+@pytest.mark.parametrize("role", [PromptRole.DIRECTOR_MULTISHOT, PromptRole.DIRECTOR_KEYFRAMES])
+def test_an_older_director_prompt_takes_the_shipped_cast_part(role):
+    text = read_prompt(role, "qwen3.8")
+    older = PromptVersion(role=role, model="qwen3.8", text=text.split("=== cast ===")[0])
+    run_text, calls = runner(
+        KEYFRAMES_CAST if role is PromptRole.DIRECTOR_KEYFRAMES else MULTISHOT_ONE
+    )
+    if role is PromptRole.DIRECTOR_KEYFRAMES:
+        direct_keyframes(run_text, older, [PHOTO, PHOTO], CAST_IDEA, cast=CAST, clock=clock())
+    else:
+        direct_multishot(run_text, older, PHOTO, CAST_IDEA, cast=CAST[:2])
+    assert "\n\nCAST: " in calls[0]["prompt"]

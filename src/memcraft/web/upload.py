@@ -22,6 +22,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import FormData, Headers, UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
 
+from memcraft import cast as casting
 from memcraft import photos, queue
 from memcraft.models import Job, JobLane, JobLength, JobQuality, JobRegime, JobStatus, User
 from memcraft.photos import CropBox, FileSizeError, PhotoCountError, PhotoError
@@ -31,7 +32,11 @@ from memcraft.web.auth import ApprovedUser, SessionDep, StoreDep
 
 router = APIRouter(prefix="/api")
 
-MAX_IDEA = 500
+# The idea goes whole to Gemma (llama-server context 16384 tokens; an idea call used 425 to
+# 818 prompt tokens before, and 1000 characters are at most about 500 more) and to the Qwen
+# director (no input limit in its text graph; only its answer has max_length 1800 tokens).
+# On the CPU each 1000 characters cost Gemma about 10 s.
+MAX_IDEA = 1000
 # Jobs of one person that are waiting or being worked on, so that one friend cannot fill
 # the queue. A preview or a closed job no longer counts.
 MAX_OPEN_JOBS = 3
@@ -45,7 +50,7 @@ OPEN_STATUSES = (
 # Every photo at its largest, plus room for the other fields and the multipart framing.
 MAX_BODY = photos.MAX_PHOTOS * photos.MAX_BYTES + 1024 * 1024
 MAX_FIELD_BYTES = 16 * 1024
-FIELDS = ("photos", "crops", "length", "quality", "idea")
+FIELDS = ("photos", "crops", "length", "quality", "idea", "names")
 
 REGIME_NOTES = {
     JobRegime.MULTISHOT: (
@@ -90,7 +95,9 @@ async def create_job(
     request: Request, user: ApprovedUser, session: SessionDep, store: StoreDep
 ) -> JobCreated:
     """Multipart: photos (1 to 3 files), crops (a JSON list of {x, y, w, h}, one per photo,
-    as fractions of the photo the way the browser shows it), length, quality and idea."""
+    as fractions of the photo the way the browser shows it), length, quality, idea, and
+    optionally names (a JSON list, one entry per photo, of the names of its people from left
+    to right, which the idea may use as <name>; see memcraft.cast)."""
     _check_content_length(request)
     user_id = await run_in_threadpool(_check_open_jobs, session, user)
     form = await _read_form(request)
@@ -202,7 +209,9 @@ async def _read_form(request: Request) -> FormData:
         raise HTTPException(400, "The upload could not be read.") from None
 
 
-type _Fields = tuple[list[UploadFile], list[CropBox], JobLength, JobQuality, str | None]
+type _Fields = tuple[
+    list[UploadFile], list[CropBox], JobLength, JobQuality, str | None, casting.Cast | None
+]
 
 
 def _fields(form: FormData) -> _Fields:
@@ -216,10 +225,23 @@ def _fields(form: FormData) -> _Fields:
     length = _choice(form, "length", JobLength, "short or long")
     quality = _choice(form, "quality", JobQuality, "720p or 1080p")
     idea = _one(form, "idea", "the idea", required=False)
-    idea = (idea or "").strip() or None
+    # A browser sends the line breaks of a text box as CRLF; its maxlength counted them as one.
+    idea = (idea or "").replace("\r\n", "\n").replace("\r", "\n").strip() or None
     if idea is not None and len(idea) > MAX_IDEA:
-        raise HTTPException(422, f"Please keep the idea under {MAX_IDEA} characters.")
-    return files, crops, length, quality, idea
+        raise HTTPException(422, f"Please keep the idea to {MAX_IDEA} characters at most.")
+    return files, crops, length, quality, idea, _cast(form, len(files), idea)
+
+
+def _cast(form: FormData, count: int, idea: str | None) -> casting.Cast | None:
+    raw = _one(form, "names", "the names", required=False)
+    try:
+        names = json.loads(raw) if raw else None
+    except ValueError:
+        raise HTTPException(422, "The names could not be read.") from None
+    try:
+        return casting.build_cast(casting.parse_names(names, count), idea)
+    except casting.CastError as error:
+        raise HTTPException(422, str(error)) from None
 
 
 def _one(form: FormData, name: str, what: str, *, required: bool = True) -> str | None:
@@ -278,6 +300,7 @@ def _create(
     length: JobLength,
     quality: JobQuality,
     idea: str | None,
+    cast: casting.Cast | None,
 ) -> JobCreated:
     """The job and its photos in one transaction: all of it or nothing."""
     try:
@@ -291,6 +314,7 @@ def _create(
         job = Job(
             owner_id=user_id,
             idea_text=idea,
+            cast=cast,
             photo_count=len(files),
             length=length,
             quality=quality,

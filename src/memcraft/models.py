@@ -293,6 +293,9 @@ class Job(Base):
         _text_enum(JobStatus, "status"), server_default=JobStatus.IDEA_QUEUED.value
     )
     regime: Mapped[JobRegime | None] = mapped_column(_text_enum(JobRegime, "regime"))
+    # The people the idea names, as memcraft.cast stores them: a list of
+    # {"tag", "photo", "position"}. Null when the friend named no one.
+    cast: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
     # Pinned when the job starts. A null critic means the critic was off.
     recipe_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("recipes.id"))
     critic_engine_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("engines.id"))

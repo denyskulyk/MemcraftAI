@@ -42,7 +42,7 @@ def test_fill_needs_every_placeholder():
 @pytest.mark.parametrize("entry", FILES, ids=lambda entry: entry.file)
 def test_every_shipped_prompt_has_its_parts_and_is_clean(entry):
     text = read_prompt(entry.role, entry.model)
-    assert set(parts(text)) == entry.parts
+    assert set(parts(text)) == entry.parts | entry.optional
     raw = (PROMPTS / entry.file).read_text(encoding="utf-8")
     assert not re.search(r"[A-Za-z]:[\\/]|\\Users|/home/|\.(png|jpe?g)\b", raw)
     # Placeholders are plain words; a stray "$" would break fill().

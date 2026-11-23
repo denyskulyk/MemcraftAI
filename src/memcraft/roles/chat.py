@@ -8,21 +8,26 @@ follows from it, and calibration examples in the prompt keep the scale honest.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from memcraft import cast as casting
 from memcraft.models import Idea, IdeaSource, JobLength, PromptRole, PromptVersion
 from memcraft.roles.gemma import GemmaClient, GemmaError, object_schema
-from memcraft.roles.seed import GEMMA, fill, parts, prompt_file
+from memcraft.roles.seed import GEMMA, fill, parts, prompt_file, read_prompt
 from memcraft.versions import pin_idea
 
 SECONDS = {JobLength.SHORT: "5 to 10", JobLength.LONG: "10 to 20"}
+# What Gemma writes: an idea of its own, or how it understood the friend's (up to 1000
+# characters, memcraft.web.upload.MAX_IDEA, which goes to Gemma whole).
 MAX_IDEA = 300
+MAX_UNDERSTOOD = 400
 MAX_REASON = 160
-MAX_TOKENS = 300
+# Enough for the longest answer: about 140 tokens of text and the JSON around it.
+MAX_TOKENS = 400
 
 
 @dataclass(frozen=True)
@@ -45,7 +50,7 @@ class ChatResult:
 
 
 def schema(has_idea: bool) -> dict[str, Any]:
-    text = {"type": "string", "maxLength": MAX_IDEA}
+    text = {"type": "string", "maxLength": MAX_UNDERSTOOD if has_idea else MAX_IDEA}
     return object_schema(
         {
             ("understood" if has_idea else "idea"): text,
@@ -56,18 +61,27 @@ def schema(has_idea: bool) -> dict[str, Any]:
 
 
 def build(
-    prompt: PromptVersion, idea: str | None, length: JobLength = JobLength.SHORT
+    prompt: PromptVersion,
+    idea: str | None,
+    length: JobLength = JobLength.SHORT,
+    cast: Sequence[Mapping[str, Any]] | None = None,
 ) -> tuple[str, str]:
-    """System prompt and user text for one call."""
+    """System prompt and user text for one call. The idea goes in whole; when it names people
+    (<denys>, <person2>), a line per person says who they are in the photos."""
     found = parts(prompt.text, prompt_file(PromptRole.CHAT, GEMMA).parts)
     idea = (idea or "").strip()
     task = found["with_idea"] if idea else found["without_idea"]
     system = "\n".join(
         (fill(found["system"], {"seconds": SECONDS[length]}), fill(task), fill(found["score"]))
     )
-    user = (
-        fill(found["user_with_idea"], {"idea": idea}) if idea else fill(found["user_without_idea"])
-    )
+    if not idea:
+        return system, fill(found["user_without_idea"])
+    user = fill(found["user_with_idea"], {"idea": idea})
+    lines = casting.chat_lines(cast, idea)
+    if lines:
+        # A prompt version from before the cast takes the part from the shipped file.
+        part = found.get("cast") or parts(read_prompt(PromptRole.CHAT, GEMMA))["cast"]
+        user = f"{user}\n\n" + fill(part, {"lines": "\n".join(lines)})
     return system, user
 
 
@@ -91,18 +105,21 @@ def run_chat(
     *,
     length: JobLength = JobLength.SHORT,
     seed: int = 1,
+    cast: Sequence[Mapping[str, Any]] | None = None,
 ) -> ChatResult:
     """`photos` are the small JPEG copies for Gemma, in the user's order."""
     if not 1 <= len(photos) <= 3:
         raise ValueError("the chat agent takes 1 to 3 photos")
     has_idea = bool((idea or "").strip())
-    system, user = build(prompt, idea, length)
+    system, user = build(prompt, idea, length, cast)
     answer = client.ask(system, user, photos, schema(has_idea), max_tokens=MAX_TOKENS, seed=seed)
     data = answer.data
     try:
         score = data["score"]
         reason = one_line(data["weakness"], MAX_REASON)
-        said = one_line(data["understood" if has_idea else "idea"], MAX_IDEA)
+        said = one_line(
+            data["understood" if has_idea else "idea"], MAX_UNDERSTOOD if has_idea else MAX_IDEA
+        )
     except KeyError as error:
         raise GemmaError(f"Gemma's answer lacks {error}") from error
     if type(score) is not int or not 1 <= score <= 10 or not said or not reason:

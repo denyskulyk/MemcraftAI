@@ -53,7 +53,7 @@ def test_a_user_idea_is_kept_word_for_word():
     assert result.understood == "He juggles teacups."
     assert (result.score, result.reason, result.proposed_by) == (4, "Seen it.", IdeaSource.USER)
     assert result.prompt_tokens == 123
-    assert server.calls[0][1]["max_tokens"] == 300
+    assert server.calls[0][1]["max_tokens"] == 400
 
 
 def test_without_an_idea_gemma_proposes_one():
@@ -117,3 +117,56 @@ def test_long_text_is_cut_after_a_sentence_or_word():
     text = "First sentence is here. Second one runs on and on without end"
     assert one_line(text, 40) == "First sentence is here."
     assert one_line("word " * 20, 22) == "word word word word…"
+
+
+def long_idea(end="and at the very end a purple giraffe sneezes.", size=1000):
+    """An idea of exactly `size` characters whose last words are `end`."""
+    start = "<denys> walks into the kitchen and says Hi to <maksym>. "
+    filler = "They argue about the kettle, the toaster and the fridge. "
+    body = (start + filler * 40)[: size - len(end) - 1].rstrip()
+    idea = f"{body} {end}"
+    return idea + "x" * (size - len(idea))
+
+
+CAST = [
+    {"tag": "denys", "photo": 1, "position": 1},
+    {"tag": "maksym", "photo": 1, "position": 2},
+]
+
+
+def test_a_full_length_idea_reaches_gemma_whole():
+    from memcraft.web.upload import MAX_IDEA
+
+    idea = long_idea(size=MAX_IDEA)
+    assert len(idea) == MAX_IDEA == 1000
+    gemma, server = client(reply({"understood": "u", "weakness": "w", "score": 5}))
+    run_chat(gemma, prompt(), [JPEG], idea, cast=CAST)
+    body = server.calls[0][1]
+    text = body["messages"][1]["content"][-1]["text"]
+    assert idea in text and text.count("purple giraffe sneezes") == 1
+    assert "<denys> = the person on the left in photo 1" in text
+    assert "<maksym> = the person on the right in photo 1" in text
+    understood = body["response_format"]["json_schema"]["schema"]["properties"]["understood"]
+    assert understood["maxLength"] == 400
+
+
+def test_the_cast_goes_after_the_idea_and_only_with_tags():
+    _, user = build(prompt(), "<maksym> trips", JobLength.SHORT, CAST)
+    assert user == (
+        "The user's idea: <maksym> trips\n\n"
+        "The idea names people of the photos by tags in angle brackets:\n"
+        "<maksym> = the person on the right in photo 1\n"
+        "In understood and weakness, write about these people by their tags, exactly as "
+        "written, like <tag>."
+    )
+    # Without tags the call is the one it was before the cast: same system, same user text.
+    assert build(prompt(), "He juggles teacups", JobLength.SHORT, CAST) == build(
+        prompt(), "He juggles teacups", JobLength.SHORT
+    )
+    assert build(prompt(), "He juggles teacups")[1] == "The user's idea: He juggles teacups"
+
+
+def test_an_older_prompt_without_the_cast_part_takes_the_shipped_one():
+    old = prompt().text.split("=== cast ===")[0]
+    older = PromptVersion(role=PromptRole.CHAT, model="gemma", text=old)
+    assert build(older, "<denys> waves", cast=CAST) == build(prompt(), "<denys> waves", cast=CAST)

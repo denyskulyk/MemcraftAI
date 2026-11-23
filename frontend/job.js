@@ -80,19 +80,39 @@ function showProgress(state) {
   $("progress-text").textContent = text;
 }
 
+// <denys> shows as denys, and <person2> as the name of that person when the friend named
+// everyone, else as "person 2".
+const TAG = /<([\p{L}\p{N}][\p{L}\p{N}_-]{0,40})>/gu;
+
+function withNames(text, cast) {
+  const named = new Map();
+  for (const entry of cast || []) {
+    if (entry.photo !== null && !/^person\d+$/i.test(entry.tag)) {
+      named.set(`${entry.photo}/${entry.position}`, entry.tag);
+    }
+  }
+  return String(text).replace(TAG, (whole, tag) => {
+    const generic = /^person(\d+)$/i.exec(tag);
+    if (!generic) return tag;
+    const entry = (cast || []).find((e) => e.tag.toLowerCase() === tag.toLowerCase());
+    const name = entry && named.get(`${entry.photo}/${entry.position}`);
+    return name || `person ${generic[1]}`;
+  });
+}
+
 function showIdea(job) {
   const idea = job.idea;
   $("idea-box").hidden = !idea && !job.idea_text;
   if (idea) {
     const mine = idea.proposed_by === "user";
     $("idea-title").textContent = mine ? "Your idea, as the app understood it" : "The app's idea";
-    $("idea-text").textContent = idea.text;
+    $("idea-text").textContent = withNames(idea.text, job.cast);
     $("idea-score").textContent = "Fun guess: " + idea.score + " / 10";
     // The idea is shown above in full; this line is only the app's note on it.
-    $("idea-reason").textContent = "Weak spot: " + idea.reason;
+    $("idea-reason").textContent = "Weak spot: " + withNames(idea.reason, job.cast);
   } else if (job.idea_text) {
     $("idea-title").textContent = "Your idea";
-    $("idea-text").textContent = job.idea_text;
+    $("idea-text").textContent = withNames(job.idea_text, job.cast);
     $("idea-score").textContent = "";
     $("idea-reason").textContent = "The app is reading your idea.";
   }

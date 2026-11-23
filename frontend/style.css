@@ -121,6 +121,84 @@ textarea {
   resize: vertical;
 }
 
+/* The idea box grows with its text (new.js), so a full-length idea never scrolls inside. */
+#idea {
+  min-height: 8rem;
+  overflow-y: hidden;
+  resize: none;
+}
+
+.counter {
+  text-align: right;
+}
+
+.counter.at-limit {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* Names under a photo, and the names as chips above the idea. */
+.people {
+  margin: 8px 0 0;
+}
+
+.people label {
+  display: block;
+  font-weight: 600;
+}
+
+input[type="text"] {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  min-height: 40px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+}
+
+.chips .hint {
+  flex-basis: 100%;
+}
+
+button.chip {
+  min-height: 36px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* A number on each face in the frame: person 1, 2, 3 in reading order. */
+.face-marker {
+  position: absolute;
+  transform: translate(-50%, -110%);
+  min-width: 1.6em;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--frame);
+  color: #000;
+  border: 2px solid #000;
+  font: 600 0.85rem/1.4 system-ui, sans-serif;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.face-marker.on-face {
+  transform: translate(-50%, 15%);
+}
+
 button,
 .button {
   font: inherit;

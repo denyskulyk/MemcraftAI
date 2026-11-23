@@ -33,3 +33,11 @@ RUN 2: continues from the last frame of RUN 1 to the end keyframe
 Keep every face and identity exactly as in the photos.
 === user ===
 Idea: $idea
+=== cast ===
+CAST: the idea names people of the photos by tags in angle brackets. Who they are:
+$lines
+With a CAST:
+- PEOPLE: list each person of the CAST once, first and in CAST order, as "<imageN>: the <short visual tag>, <hair, face, clothing>", then anyone else who is in the video. Two people from one photo both get its <imageN>, and their visual tags must tell them apart (clothing, hair).
+- Each tag is one person, the same in PEOPLE, in every keyframe and in every RUN, with the same visual tag.
+- Never write the CAST tags (the names in angle brackets) in your answer. In keyframes name each person "the <visual tag> from <imageN>". In the RUNs name each person only by the visual tag from PEOPLE, because the video model does not know names: speech goes with the visual tag, like: the man in the red jacket says "Hi!".
+- Keep the spoken words as the idea gives them.

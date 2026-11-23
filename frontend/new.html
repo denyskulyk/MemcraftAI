@@ -22,7 +22,8 @@
             yellow frame to choose what goes into the video, and drag a corner to make it
             bigger or smaller. With a keyboard: the arrow keys move the frame, + and -
             change its size. If someone's face is cut off or left outside the frame, a
-            warning appears under the photo.
+            warning appears under the photo. The faces the app finds in the frame get a
+            number from left to right.
           </p>
           <p>
             <input id="files" class="file-input" type="file" accept="image/png,image/jpeg" multiple>
@@ -46,8 +47,18 @@
 
         <section>
           <h2><label for="idea">4. Your idea (optional)</label></h2>
-          <textarea id="idea" maxlength="500" aria-describedby="idea-hint"></textarea>
-          <p id="idea-hint" class="hint">Leave it empty and the app will suggest an idea.</p>
+          <p id="idea-hint" class="hint">
+            Leave it empty and the app will suggest an idea. To name people, write
+            &lt;person1&gt;, &lt;person2&gt;, … for the people from left to right (photo 1
+            first), or type names under the photos and tap a name below.
+          </p>
+          <div id="cast-chips" class="chips" hidden>
+            <span class="hint" id="chips-label">Tap a name to put it in your idea:</span>
+          </div>
+          <textarea id="idea" maxlength="1000" rows="5"
+            aria-describedby="idea-hint idea-count idea-tags"></textarea>
+          <p id="idea-count" class="hint counter" aria-live="polite"></p>
+          <p id="idea-tags" class="warning" role="status" hidden></p>
         </section>
 
         <section>

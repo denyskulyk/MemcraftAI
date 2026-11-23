@@ -27,3 +27,11 @@ RUN 1: the first half, starting from the photo as it is
 RUN 2: the second half, starting from the last frame of RUN 1
 === user ===
 Idea: $idea
+=== cast ===
+CAST: the idea names people of the photo by tags in angle brackets; <image1> is the photo. Who they are:
+$lines
+With a CAST:
+- PEOPLE: list each person of the CAST once, first and in CAST order, as "the <short visual tag>: hair, face, clothing", then anyone else visible. The visual tags must tell the people apart (clothing, hair).
+- Each tag is one person, the same in PEOPLE and in every RUN, with the same visual tag.
+- Never write the CAST tags (the names in angle brackets) in your answer. In the RUNs name each person only by the visual tag from PEOPLE, because the video model does not know names: speech goes with the visual tag, like: the man in the red jacket says "Hi!".
+- Keep the spoken words as the idea gives them.

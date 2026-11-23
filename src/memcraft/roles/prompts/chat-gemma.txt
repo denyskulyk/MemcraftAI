@@ -13,3 +13,7 @@ Before you answer, compare with these examples and pick the nearest.
 The user's idea: $idea
 === user_without_idea ===
 No idea given.
+=== cast ===
+The idea names people of the photos by tags in angle brackets:
+$lines
+In understood and weakness, write about these people by their tags, exactly as written, like <tag>.

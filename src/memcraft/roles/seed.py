@@ -37,6 +37,9 @@ class PromptFile:
     model: str
     file: str
     parts: frozenset[str]
+    # Parts the shipped file has but older stored versions may lack; the code falls back to
+    # the shipped file's part for those.
+    optional: frozenset[str] = frozenset()
 
 
 # The parts each role reads. A stored text without one of them is refused when seeded.
@@ -48,6 +51,7 @@ FILES: tuple[PromptFile, ...] = (
         frozenset(
             {"system", "with_idea", "without_idea", "score", "user_with_idea", "user_without_idea"}
         ),
+        frozenset({"cast"}),
     ),
     PromptFile(
         PromptRole.DIRECTOR_MULTISHOT,
@@ -63,6 +67,7 @@ FILES: tuple[PromptFile, ...] = (
                 "user",
             }
         ),
+        frozenset({"cast"}),
     ),
     PromptFile(
         PromptRole.DIRECTOR_KEYFRAMES,
@@ -79,6 +84,7 @@ FILES: tuple[PromptFile, ...] = (
                 "user",
             }
         ),
+        frozenset({"cast"}),
     ),
     PromptFile(PromptRole.CRITIC, GEMMA, "critic-gemma.txt", frozenset({"system", "user"})),
     PromptFile(PromptRole.CRITIC, QWEN, "critic-qwen3.8.txt", frozenset({"system", "user"})),
@@ -119,7 +125,7 @@ def read_prompt(role: PromptRole, model: str) -> str:
     """The text of the file as it ships, checked for its parts."""
     entry = prompt_file(role, model)
     text = (PROMPTS / entry.file).read_text(encoding="utf-8").replace("\r\n", "\n").strip() + "\n"
-    parts(text, entry.parts)
+    parts(text, entry.parts | entry.optional)
     return text
 
 

@@ -318,7 +318,9 @@ class IdeaStep:
         prompt = active_prompt(session, PromptRole.CHAT, GEMMA)
         started = time.monotonic()
         with self.deps.gemma.client() as client:
-            result = run_chat(client, prompt, images, idea, length=length, seed=ctx.attempt)
+            result = run_chat(
+                client, prompt, images, idea, length=length, seed=ctx.attempt, cast=job.cast
+            )
         ctx.progress(0.95)
         row = record_idea(session, ctx.job_id, result, prompt)
         if result.proposed_by is IdeaSource.USER:
@@ -380,10 +382,18 @@ class ScenarioStep:
                     shots=rules.default_shots,
                     frames=frames,
                     seed=seed,
+                    cast=job.cast,
                 )
             else:
                 scenario = direct_keyframes(
-                    runner, prompt, images, idea, length=job.length, frames=frames, seed=seed
+                    runner,
+                    prompt,
+                    images,
+                    idea,
+                    length=job.length,
+                    frames=frames,
+                    seed=seed,
+                    cast=job.cast,
                 )
         deps.comfy.clean(folder)
         output = scenario.as_output()

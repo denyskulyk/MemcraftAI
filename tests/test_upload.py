@@ -184,7 +184,11 @@ def test_three_photos_keep_their_order(client, engine, store):
         (1, [FULL], {"crops": None}, 422, "Send the crop frames once."),
         (1, [FULL], {"length": "medium"}, 422, "The length must be short or long."),
         (1, [FULL], {"quality": "4k"}, 422, "The quality must be 720p or 1080p."),
-        (1, [FULL], {"idea": "x" * 501}, 422, "Please keep the idea under 500 characters."),
+        (1, [FULL], {"idea": "x" * 1001}, 422, "Please keep the idea to 1000 characters at"),
+        (1, [FULL], {"names": "nope"}, 422, "The names could not be read."),
+        (1, [FULL], {"names": '[["a"], ["b"]]'}, 422, "Send the names for each photo once."),
+        (1, [FULL], {"names": '["a b"]'}, 422, 'Photo 1: "a b" cannot be a name.'),
+        (1, [FULL], {"idea": "<bob> waves"}, 422, "The idea names <bob>, but no one"),
         (1, [FULL], {"extra": "1"}, 422, "Unexpected field: extra."),
         (1, [{"x": 0.5, "y": 0, "w": 1, "h": 1}], {}, 422, "Photo 1: The crop must lie inside"),
     ],
@@ -345,3 +349,68 @@ def test_regime_rule_refuses_other_counts():
     for count in (0, 4):
         with pytest.raises(ValueError, match="photo_count"):
             regime_for(count, JobLength.SHORT)
+
+
+def test_a_full_length_idea_is_kept_whole(client, engine, store):
+    add_user(engine, ALICE)
+    idea = ("word " * 300)[: upload.MAX_IDEA - 9] + " the end."
+    assert len(idea) == upload.MAX_IDEA == 1000
+    answer = post(client, [picture()], [FULL], idea=idea)
+    assert answer.status_code == 201, answer.text
+    with Session(engine) as session:
+        job = session.get(Job, uuid.UUID(answer.json()["id"]))
+        assert job.idea_text == idea and job.cast is None
+
+
+def test_line_breaks_count_once(client, engine, store):
+    # A browser's maxlength counts a line break once, but the form sends it as CRLF.
+    add_user(engine, ALICE)
+    idea = ("a" * 98 + "\r\n") * 10
+    answer = post(client, [picture()], [FULL], idea=idea)
+    assert answer.status_code == 201, answer.text
+    with Session(engine) as session:
+        job = session.get(Job, uuid.UUID(answer.json()["id"]))
+        assert job.idea_text == idea.replace("\r\n", "\n").strip()
+        assert len(job.idea_text) == 989
+
+
+def test_names_and_tags_make_the_cast(client, engine, store):
+    add_user(engine, ALICE)
+    idea = '<denys> says "Hi!", <Maksym> answers "Hi to you too", <person3> laughs.'
+    names = json.dumps([["denys", "maksym"], "olga"])
+    answer = post(client, [picture(), picture()], [FULL, FULL], idea=idea, names=names)
+    assert answer.status_code == 201, answer.text
+    job_id = answer.json()["id"]
+    with Session(engine) as session:
+        job = session.get(Job, uuid.UUID(job_id))
+        assert job.idea_text == idea
+        assert job.cast == [
+            {"tag": "denys", "photo": 1, "position": 1},
+            {"tag": "maksym", "photo": 1, "position": 2},
+            {"tag": "olga", "photo": 2, "position": 1},
+            {"tag": "person3", "photo": 2, "position": 1},
+        ]
+    shown = client.get(f"/api/jobs/{job_id}", headers=as_user(ALICE)).json()
+    assert shown["cast"][0] == {"tag": "denys", "photo": 1, "position": 1}
+
+
+def test_person_tags_work_without_names(client, engine, store):
+    add_user(engine, ALICE)
+    answer = post(client, [picture()], [FULL], idea="<person2> hugs <person1>", names=None)
+    assert answer.status_code == 201, answer.text
+    with Session(engine) as session:
+        job = session.get(Job, uuid.UUID(answer.json()["id"]))
+        assert job.cast == [
+            {"tag": "person2", "photo": None, "position": 2},
+            {"tag": "person1", "photo": None, "position": 1},
+        ]
+
+
+def test_names_twice_are_refused(client, engine, store, tmp_path):
+    add_user(engine, ALICE)
+    names = json.dumps([["denys"], ["Denys"]])
+    answer = post(client, [picture(), picture()], [FULL, FULL], names=names)
+    assert answer.status_code == 422
+    assert answer.json()["detail"] == 'The name "Denys" is used twice. Each name must be different.'
+    assert counts(engine) == (0, 0)
+    assert stored_files(tmp_path) == []
