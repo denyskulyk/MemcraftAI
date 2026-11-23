@@ -42,6 +42,13 @@ function Start-Worker {
     }
     if (-not (Test-Path -LiteralPath $Python)) { throw "No Python at $Python; set up .venv first." }
     New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+    # The file store never creates its folders (a missing one counts as not mounted), so the
+    # first start creates the two that .env names.
+    foreach ($line in Get-Content -LiteralPath (Join-Path $ProjectRoot '.env')) {
+        if ($line -match '^\s*MEMCRAFT_(SHARED|PRIVATE)_DIR\s*=\s*(.+?)\s*$') {
+            New-Item -ItemType Directory -Force -Path $Matches[2].Trim('"', "'") | Out-Null
+        }
+    }
     Remove-Item -LiteralPath $StopFile -ErrorAction SilentlyContinue
     $arguments = "`"$Python`" -m memcraft.worker --stop-file `"$StopFile`" $WorkerArgs".Trim()
     # Through WMI, so the worker outlives this shell; cmd only redirects the output to the log.
