@@ -121,6 +121,75 @@ async function showPeople() {
   $("people").hidden = false;
 }
 
+const FINAL = new Set(["closed", "expired", "released", "failed", "cancelled"]);
+let pauseTimer = null;
+
+function cell(text, className) {
+  const element = document.createElement("td");
+  element.textContent = text;
+  if (className) element.className = className;
+  return element;
+}
+
+function jobRow(job) {
+  const row = document.createElement("tr");
+  const steps = job.steps.total
+    ? job.steps.done + " / " + job.steps.total + (job.steps.current ? ", now " + job.steps.current : "")
+    : "";
+  const progress = job.claimed_by ? " " + Math.round(job.progress * 100) + "%" : "";
+  row.append(
+    cell(job.owner_login),
+    cell(job.status.replace(/_/g, " ") + progress, "job-" + job.status),
+    cell(job.regime || ""),
+    cell(job.quality === "fhd1080" ? "1080p" : "720p"),
+    cell(steps),
+    cell(job.error || job.steps.last_error || "", "error-cell"),
+    cell(new Date(job.created_at).toLocaleString()),
+  );
+  const actions = document.createElement("td");
+  actions.className = "actions";
+  if (!FINAL.has(job.status)) {
+    const cancel = button("Cancel", "danger", async () => {
+      if (cancel.dataset.armed !== "yes") {
+        cancel.dataset.armed = "yes";
+        cancel.textContent = "Cancel for good?";
+        return false;
+      }
+      return call("POST", "/api/admin/jobs/" + job.id + "/cancel", { expected: job.status });
+    });
+    actions.append(cancel);
+  }
+  row.append(actions);
+  return row;
+}
+
+function pauseText(state) {
+  if (!state.paused) {
+    return state.running ? "Running: " + state.running + " job(s) in hand." : "Running: the worker takes the next job when there is one.";
+  }
+  if (state.stopped) return "Stopped: paused, and no job is running.";
+  return "Pausing: waiting for " + state.running + " job(s) to finish the step they are in.";
+}
+
+async function showPause() {
+  const state = await call("GET", "/api/admin/pause");
+  $("pause-state").textContent = pauseText(state);
+  $("pause-state").className = "pause-state " + (state.stopped ? "stopped" : state.paused ? "pausing" : "");
+  $("pause").textContent = state.paused ? "Resume" : "Pause";
+  $("pause").dataset.paused = state.paused ? "yes" : "no";
+  return state;
+}
+
+async function showQueue() {
+  clearTimeout(pauseTimer);
+  const jobs = await call("GET", "/api/admin/jobs");
+  $("jobs").replaceChildren(...jobs.map(jobRow));
+  const state = await showPause();
+  $("queue").hidden = false;
+  // Watch until the worker has let go.
+  if (state.paused && !state.stopped) pauseTimer = setTimeout(() => showQueue().catch(() => {}), 5000);
+}
+
 async function refresh() {
   const answer = await fetch("/api/admin/status");
   if (answer.status === 404 || answer.status === 403) return say("This page is only for the admin.");
@@ -130,11 +199,14 @@ async function refresh() {
   $("enrol").hidden = status.has_passkey;
   $("sign-in").hidden = !status.has_passkey;
   $("people").hidden = true;
+  $("queue").hidden = true;
+  clearTimeout(pauseTimer);
   if (!status.signed_in) {
     say(status.has_passkey ? "Sign in with your passkey." : "Create a passkey for this admin page first.");
     return;
   }
   await showPeople();
+  await showQueue();
 }
 
 async function run(action, control) {
@@ -153,4 +225,7 @@ $("enrol").addEventListener("click", (e) => run(createPasskey, e.target));
 $("sign-in").addEventListener("click", (e) => run(signIn, e.target));
 $("add-passkey").addEventListener("click", (e) => run(createPasskey, e.target));
 $("sign-out").addEventListener("click", (e) => run(() => call("POST", "/api/admin/sign-out"), e.target));
+$("pause").addEventListener("click", (e) =>
+  run(() => call("POST", "/api/admin/pause", { paused: e.target.dataset.paused !== "yes" }), e.target));
+$("reload-jobs").addEventListener("click", (e) => run(showQueue, e.target));
 run(refresh);

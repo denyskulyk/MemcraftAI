@@ -31,6 +31,23 @@
         </div>
         <p class="note">Delete removes the person, every video and every photo at once. It cannot be undone.</p>
       </section>
+      <section id="queue" hidden>
+        <div class="bar">
+          <h2>Videos and queue</h2>
+          <button id="pause" type="button">Pause</button>
+          <button id="reload-jobs" type="button" class="quiet">Reload</button>
+        </div>
+        <p id="pause-state" class="pause-state" role="status"></p>
+        <div class="table">
+          <table>
+            <thead>
+              <tr><th>Owner</th><th>Status</th><th>Regime</th><th>Quality</th><th>Steps</th><th>Error</th><th>Created</th><th></th></tr>
+            </thead>
+            <tbody id="jobs"></tbody>
+          </table>
+        </div>
+        <p class="note">Pause lets the worker finish the step it is in, then it waits. Cancel stops one job for good; its owner can then delete it.</p>
+      </section>
     </main>
   </body>
 </html>

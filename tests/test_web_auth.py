@@ -208,7 +208,7 @@ def test_every_api_route_needs_an_approved_user(client, engine):
             answer = client.request(method, path, headers=as_user(BOB))
             assert answer.status_code == 403, route.path
             checked += 1
-    assert checked >= 3
+    assert checked >= 10
 
 
 @pytest.mark.parametrize(

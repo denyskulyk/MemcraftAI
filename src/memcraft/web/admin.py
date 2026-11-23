@@ -1,4 +1,5 @@
-"""Admin pages: Tailscale login plus a passkey (E7.1), and who may use the app (E7.2).
+"""Admin pages: Tailscale login plus a passkey (E7.1), who may use the app (E7.2), the jobs
+and the queue (E7.3) and the pause switch (E7.4).
 
 The first passkey can be added with the admin's Tailscale login alone. Every later passkey
 needs a signed-in admin, so somebody who only borrowed the Tailscale login cannot add one.
@@ -20,18 +21,28 @@ from sqlalchemy.orm import Session
 from webauthn.helpers import exceptions as webauthn_errors
 from webauthn.helpers import structs
 
+from memcraft import queue
 from memcraft.config import Settings, get_settings
 from memcraft.models import (
     AdminSession,
     AuthChallenge,
     ChallengePurpose,
     Job,
+    JobLane,
+    JobLength,
+    JobQuality,
+    JobRegime,
+    JobStatus,
+    JobStep,
     Passkey,
+    StepStatus,
     User,
     UserRole,
     UserStatus,
 )
+from memcraft.queue import StatusConflictError, TransitionError
 from memcraft.web.auth import ApprovedUser, SessionDep, StoreDep
+from memcraft.worker import pause
 
 router = APIRouter(prefix="/api/admin")
 
@@ -334,3 +345,156 @@ def delete_user(user_id: uuid.UUID, admin: AdminUser, session: SessionDep, store
         raise HTTPException(409, "another admin cannot be deleted here")
     # Files the web app cannot see are left in file_deletions for the worker.
     store.delete_user(session, user.id)
+
+
+# Videos and queue (E7.3) and the pause switch (E7.4).
+
+ADMIN_JOB_LIMIT = 300
+
+
+class StepSummary(BaseModel):
+    done: int = 0
+    total: int = 0
+    # The step a worker is on, such as "clip 2", or None.
+    current: str | None = None
+    # The newest error any step of the job has.
+    last_error: str | None = None
+
+
+class AdminJobOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    owner_login: str
+    status: JobStatus
+    lane: JobLane
+    regime: JobRegime | None
+    length: JobLength
+    quality: JobQuality
+    progress: float
+    error: str | None
+    claimed_by: str | None
+    created_at: datetime
+    updated_at: datetime
+    steps: StepSummary
+
+
+class CancelIn(BaseModel):
+    # The status the admin saw: if the job has moved on since, nothing happens (409).
+    expected: JobStatus
+
+
+class PauseIn(BaseModel):
+    paused: bool
+
+
+class PauseOut(BaseModel):
+    paused: bool
+    # Jobs a worker has in hand right now.
+    running: int
+    # Paused, and no worker holds a job any more: safe to touch the PC.
+    stopped: bool
+
+
+@router.get("/jobs")
+def list_all_jobs(admin: AdminUser, session: SessionDep) -> list[AdminJobOut]:
+    """Every job there is, newest first. A deleted job has no row, so it is not here."""
+    return _admin_jobs(session)
+
+
+def _admin_jobs(session: Session, job_id: uuid.UUID | None = None) -> list[AdminJobOut]:
+    statement = select(Job, User.tailscale_login).join(User, User.id == Job.owner_id)
+    if job_id is not None:
+        statement = statement.where(Job.id == job_id)
+    rows = session.execute(
+        statement.order_by(Job.created_at.desc(), Job.id).limit(ADMIN_JOB_LIMIT)
+    ).all()
+    summaries = _step_summaries(session, [job.id for job, _ in rows])
+    return [
+        AdminJobOut(
+            id=job.id,
+            owner_login=login,
+            status=job.status,
+            lane=job.lane,
+            regime=job.regime,
+            length=job.length,
+            quality=job.quality,
+            progress=job.progress,
+            error=job.error,
+            claimed_by=job.claimed_by,
+            created_at=job.created_at,
+            updated_at=job.updated_at,
+            steps=summaries.get(job.id, StepSummary()),
+        )
+        for job, login in rows
+    ]
+
+
+def _step_summaries(session: Session, job_ids: list[uuid.UUID]) -> dict[uuid.UUID, StepSummary]:
+    summaries: dict[uuid.UUID, StepSummary] = {}
+    if not job_ids:
+        return summaries
+    steps = session.execute(
+        select(JobStep.job_id, JobStep.step, JobStep.ordinal, JobStep.status, JobStep.error)
+        .where(JobStep.job_id.in_(job_ids))
+        .order_by(JobStep.created_at, JobStep.id)
+    )
+    for row in steps:
+        summary = summaries.setdefault(row.job_id, StepSummary())
+        summary.total += 1
+        if row.status == StepStatus.DONE:
+            summary.done += 1
+        elif row.status == StepStatus.RUNNING:
+            summary.current = f"{row.step.value} {row.ordinal + 1}"
+        if row.error:
+            summary.last_error = row.error
+    return summaries
+
+
+@router.post("/jobs/{job_id}/cancel")
+def cancel_job(
+    job_id: uuid.UUID,
+    admin: AdminUser,
+    session: SessionDep,
+    body: Annotated[CancelIn, Body()],
+) -> AdminJobOut:
+    """Stop a job for good. A worker that has it loses its claim and stops at its next check."""
+    job = session.get(Job, job_id)
+    if job is None:
+        raise HTTPException(404, "not found")
+    try:
+        queue.transition(session, job, JobStatus.CANCELLED, expected=body.expected)
+        session.commit()
+    except TransitionError:
+        session.rollback()
+        raise HTTPException(409, "this job has finished already") from None
+    except StatusConflictError:
+        session.rollback()
+        raise HTTPException(409, "this job has changed meanwhile, please reload") from None
+    rows = _admin_jobs(session, job_id)
+    if not rows:  # deleted right after the cancel
+        raise HTTPException(404, "not found")
+    return rows[0]
+
+
+def _pause_state(session: Session) -> PauseOut:
+    paused = pause.is_paused(session)
+    running = (
+        session.scalar(select(func.count()).select_from(Job).where(Job.status.in_(queue.RUNNING)))
+        or 0
+    )
+    session.rollback()
+    return PauseOut(paused=paused, running=running, stopped=paused and running == 0)
+
+
+@router.get("/pause")
+def pause_status(admin: AdminUser, session: SessionDep) -> PauseOut:
+    return _pause_state(session)
+
+
+@router.post("/pause")
+def set_pause(admin: AdminUser, session: SessionDep, body: Annotated[PauseIn, Body()]) -> PauseOut:
+    """The worker finishes the step it is in and then waits; resume goes on from there."""
+    pause.set_paused(session, body.paused)
+    session.commit()
+    return _pause_state(session)

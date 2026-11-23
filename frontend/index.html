@@ -8,9 +8,27 @@
     <script src="/app.js" defer></script>
   </head>
   <body>
-    <h1>MemcraftAI</h1>
-    <nav><a href="/new.html">New video</a></nav>
-    <p id="status" role="status">Checking who you are…</p>
-    <ul id="jobs"></ul>
+    <main>
+      <h1>MemcraftAI</h1>
+      <p id="status" role="status">Checking who you are…</p>
+      <nav id="nav" hidden><a class="button primary-link" href="/new.html">Make a new video</a></nav>
+
+      <section id="current-box" hidden>
+        <h2>On the way</h2>
+        <ul id="current" class="jobs"></ul>
+      </section>
+
+      <section id="videos-box" hidden>
+        <h2>Your videos</h2>
+        <ul id="videos" class="jobs"></ul>
+      </section>
+
+      <section id="earlier-box" hidden>
+        <h2>Earlier</h2>
+        <ul id="earlier" class="jobs"></ul>
+      </section>
+
+      <p id="empty" class="hint" hidden>No videos yet. Make your first one!</p>
+    </main>
   </body>
 </html>

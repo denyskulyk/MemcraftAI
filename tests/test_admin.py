@@ -328,6 +328,7 @@ def test_every_admin_route_needs_the_admin(client, engine):
     checked = 0
     for route in router.routes:
         path = route.path.replace("{user_id}", str(uuid.uuid4()))
+        path = path.replace("{job_id}", str(uuid.uuid4()))
         assert "{" not in path, f"teach this test about {route.path}"
         for method in route.methods:
             alice = client.request(method, path, headers={"Tailscale-User-Login": ALICE})
@@ -335,4 +336,4 @@ def test_every_admin_route_needs_the_admin(client, engine):
             if route.path not in open_before_sign_in:
                 assert client.request(method, path).status_code == 401, route.path
             checked += 1
-    assert checked >= 10
+    assert checked >= 14

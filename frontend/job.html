@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Your video · MemcraftAI</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/job.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <nav><a href="/">Back to your videos</a></nav>
+      <h1 id="title">Your video</h1>
+      <p id="status" role="status">Loading…</p>
+      <p id="error" class="error" role="alert" hidden></p>
+
+      <section id="progress-box" hidden>
+        <progress id="progress" max="100" value="0"></progress>
+        <p id="progress-text" class="hint" aria-live="polite"></p>
+      </section>
+
+      <section id="idea-box" hidden>
+        <h2 id="idea-title">The idea</h2>
+        <p id="idea-text" class="idea"></p>
+        <p id="idea-score" class="score"></p>
+        <p id="idea-reason" class="hint"></p>
+        <div id="decide" class="actions" hidden>
+          <button id="approve" class="primary" type="button">Yes, make this video</button>
+          <button id="reject" type="button">No, close it</button>
+        </div>
+      </section>
+
+      <section id="preview-box" hidden>
+        <h2>Preview</h2>
+        <video id="preview" class="player" controls playsinline preload="metadata"></video>
+        <p id="preview-hint" class="hint">The preview is kept for 24 hours. Release it to keep the video.</p>
+        <fieldset>
+          <legend>Final quality</legend>
+          <label class="choice"><input type="radio" name="quality" value="hd720"> 720p</label>
+          <label class="choice"><input type="radio" name="quality" value="fhd1080"> 1080p</label>
+          <button id="release" class="primary" type="button">Release</button>
+        </fieldset>
+      </section>
+
+      <section id="video-box" hidden>
+        <h2>Your video</h2>
+        <video id="video" class="player" controls playsinline preload="metadata"></video>
+        <p><a id="download" class="button" href="#">Download mp4</a></p>
+      </section>
+
+      <section id="delete-box" hidden>
+        <button id="delete" class="danger" type="button">Delete this video</button>
+        <p id="delete-hint" class="hint"></p>
+      </section>
+    </main>
+  </body>
+</html>
