@@ -1,0 +1,208 @@
+{
+  "format": 1,
+  "name": "video-ltx2_5",
+  "version": 8,
+  "source": "video-ltx2_5-v8.json converted from UI format; the built-in prompt writer never runs because positive_prompt replaces it",
+  "inputs": {
+    "first_frame": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "7",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "required": true
+    },
+    "last_frame": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "79",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "toggle": {
+        "node": "78",
+        "class_type": "PrimitiveBoolean",
+        "input": "value"
+      },
+      "fallback": "first_frame"
+    },
+    "positive_prompt": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "23",
+          "class_type": "PrimitiveStringMultiline",
+          "input": "value"
+        }
+      ],
+      "required": true,
+      "toggle": {
+        "node": "22",
+        "class_type": "PrimitiveBoolean",
+        "input": "value"
+      }
+    },
+    "negative_prompt": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "31",
+          "class_type": "CLIPTextEncode",
+          "input": "text"
+        }
+      ]
+    },
+    "seed": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "10",
+          "class_type": "RandomNoise",
+          "input": "noise_seed"
+        }
+      ],
+      "required": true,
+      "min": 0,
+      "max": 18446744073709551615
+    },
+    "refine_seed": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "57",
+          "class_type": "RandomNoise",
+          "input": "noise_seed"
+        }
+      ],
+      "min": 0,
+      "max": 18446744073709551615
+    },
+    "seconds": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "8",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 1,
+      "max": 60
+    },
+    "fps": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "9",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 1,
+      "max": 120
+    },
+    "final_megapixels": {
+      "type": "float",
+      "targets": [
+        {
+          "node": "11",
+          "class_type": "ImageScaleToTotalPixels",
+          "input": "megapixels"
+        }
+      ],
+      "min": 0.01,
+      "max": 16
+    },
+    "upscale_longest_side": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "75",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 64,
+      "max": 8192
+    },
+    "make_preview": {
+      "type": "bool",
+      "targets": [
+        {
+          "node": "2",
+          "class_type": "PrimitiveBoolean",
+          "input": "value"
+        }
+      ]
+    },
+    "make_final": {
+      "type": "bool",
+      "targets": [
+        {
+          "node": "3",
+          "class_type": "PrimitiveBoolean",
+          "input": "value"
+        }
+      ]
+    },
+    "make_upscaled": {
+      "type": "bool",
+      "targets": [
+        {
+          "node": "66",
+          "class_type": "PrimitiveBoolean",
+          "input": "value"
+        }
+      ]
+    },
+    "preview_prefix": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "51",
+          "class_type": "SaveVideo",
+          "input": "filename_prefix"
+        }
+      ]
+    },
+    "final_prefix": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "64",
+          "class_type": "SaveVideo",
+          "input": "filename_prefix"
+        }
+      ]
+    },
+    "upscaled_prefix": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "70",
+          "class_type": "SaveVideo",
+          "input": "filename_prefix"
+        }
+      ]
+    }
+  },
+  "outputs": {
+    "preview": {
+      "node": "51",
+      "class_type": "SaveVideo"
+    },
+    "final": {
+      "node": "64",
+      "class_type": "SaveVideo"
+    },
+    "upscaled": {
+      "node": "70",
+      "class_type": "SaveVideo"
+    }
+  }
+}

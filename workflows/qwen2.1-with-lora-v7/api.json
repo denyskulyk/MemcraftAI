@@ -1,0 +1,1086 @@
+{
+  "2": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": true
+    }
+  },
+  "3": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    }
+  },
+  "4": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    }
+  },
+  "5": {
+    "class_type": "ImpactControlBridge",
+    "inputs": {
+      "mode": false,
+      "behavior": "Stop",
+      "value": [
+        "2",
+        0
+      ]
+    }
+  },
+  "6": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": "placeholder"
+    }
+  },
+  "7": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "8": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 0.98,
+      "resolution_steps": 32,
+      "image": [
+        "67",
+        0
+      ]
+    }
+  },
+  "9": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 1.98,
+      "resolution_steps": 32,
+      "image": [
+        "67",
+        0
+      ]
+    }
+  },
+  "10": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    }
+  },
+  "11": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "12": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 0.98,
+      "resolution_steps": 32,
+      "image": [
+        "71",
+        0
+      ]
+    }
+  },
+  "13": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "10",
+        0
+      ],
+      "on_true": [
+        "12",
+        0
+      ]
+    }
+  },
+  "14": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    }
+  },
+  "15": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "16": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 0.98,
+      "resolution_steps": 32,
+      "image": [
+        "76",
+        0
+      ]
+    }
+  },
+  "17": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "14",
+        0
+      ],
+      "on_true": [
+        "16",
+        0
+      ]
+    }
+  },
+  "18": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    }
+  },
+  "19": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "20": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 0.98,
+      "resolution_steps": 32,
+      "image": [
+        "81",
+        0
+      ]
+    }
+  },
+  "21": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "18",
+        0
+      ],
+      "on_true": [
+        "20",
+        0
+      ]
+    }
+  },
+  "22": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3.8_27b_uncensored_heretic_w4a8_convrot_v2.safetensors",
+      "type": "stable_diffusion",
+      "device": "default"
+    }
+  },
+  "23": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": "placeholder"
+    }
+  },
+  "24": {
+    "class_type": "TextGenerateV2",
+    "inputs": {
+      "prompt": [
+        "6",
+        0
+      ],
+      "max_length": 1100,
+      "sampling_mode": "on",
+      "sampling_mode.temperature": 0.7,
+      "sampling_mode.top_k": 20,
+      "sampling_mode.top_p": 0.9,
+      "sampling_mode.min_p": 0,
+      "sampling_mode.repetition_penalty": 1.05,
+      "sampling_mode.presence_penalty": 0,
+      "sampling_mode.seed": [
+        "60",
+        0
+      ],
+      "thinking": false,
+      "use_default_template": true,
+      "mtp": "off",
+      "clip": [
+        "22",
+        0
+      ],
+      "images.image1": [
+        "8",
+        0
+      ],
+      "images.image2": [
+        "13",
+        0
+      ],
+      "images.image3": [
+        "17",
+        0
+      ],
+      "system_prompt": [
+        "23",
+        0
+      ],
+      "images.image4": [
+        "21",
+        0
+      ]
+    }
+  },
+  "25": {
+    "class_type": "RegexReplace",
+    "inputs": {
+      "string": [
+        "24",
+        0
+      ],
+      "regex_pattern": "\\s*(?:={2,}\\s*NOTES\\s*={2,}|^\\W*NOTES\\W*$)[\\s\\S]*",
+      "replace": "",
+      "case_insensitive": false,
+      "multiline": true,
+      "dotall": false,
+      "count": 1
+    }
+  },
+  "26": {
+    "class_type": "RegexExtract",
+    "inputs": {
+      "string": [
+        "24",
+        0
+      ],
+      "regex_pattern": "\\s*(?:={2,}\\s*NOTES\\s*={2,}|^\\W*NOTES\\W*$)\\s*([\\s\\S]*?)\\s*(?:={2,}\\s*NOTES\\s*={2,}|\\Z)",
+      "mode": "First Group",
+      "case_insensitive": false,
+      "multiline": true,
+      "dotall": false,
+      "group_index": 1
+    }
+  },
+  "27": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": true
+    }
+  },
+  "28": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": "placeholder"
+    }
+  },
+  "29": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "27",
+        0
+      ],
+      "on_false": [
+        "25",
+        0
+      ],
+      "on_true": [
+        "28",
+        0
+      ]
+    }
+  },
+  "30": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "27",
+        0
+      ],
+      "on_false": [
+        "26",
+        0
+      ],
+      "on_true": [
+        "5",
+        0
+      ]
+    }
+  },
+  "31": {
+    "class_type": "PreviewAny",
+    "inputs": {
+      "source": [
+        "29",
+        0
+      ]
+    }
+  },
+  "32": {
+    "class_type": "PreviewAny",
+    "inputs": {
+      "source": [
+        "30",
+        0
+      ]
+    }
+  },
+  "33": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "34": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "device": "auto",
+      "dtype": "default",
+      "model": [
+        "33",
+        0
+      ]
+    }
+  },
+  "35": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "36": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "37": {
+    "class_type": "Lora Loader Stack (rgthree)",
+    "inputs": {
+      "lora_01": "None",
+      "strength_01": 1,
+      "lora_02": "None",
+      "strength_02": 1,
+      "lora_03": "None",
+      "strength_03": 1,
+      "lora_04": "None",
+      "strength_04": 1,
+      "model": [
+        "34",
+        0
+      ],
+      "clip": [
+        "35",
+        0
+      ]
+    }
+  },
+  "38": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": ""
+    }
+  },
+  "39": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "prompt": [
+        "29",
+        0
+      ],
+      "negative_prompt": [
+        "38",
+        0
+      ],
+      "resolution": 0,
+      "clip": [
+        "37",
+        1
+      ],
+      "images.image_1": [
+        "8",
+        0
+      ],
+      "images.image_2": [
+        "13",
+        0
+      ],
+      "images.image_3": [
+        "17",
+        0
+      ],
+      "images.image_4": [
+        "21",
+        0
+      ],
+      "vae": [
+        "36",
+        0
+      ]
+    }
+  },
+  "40": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": [
+        "60",
+        0
+      ],
+      "steps": 16,
+      "cfg": 3,
+      "sampler_name": "dpm_2",
+      "scheduler": "normal",
+      "denoise": 1,
+      "model": [
+        "37",
+        0
+      ],
+      "positive": [
+        "39",
+        0
+      ],
+      "negative": [
+        "39",
+        1
+      ],
+      "latent_image": [
+        "39",
+        2
+      ]
+    }
+  },
+  "41": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "40",
+        0
+      ],
+      "vae": [
+        "36",
+        0
+      ]
+    }
+  },
+  "42": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "2",
+        0
+      ],
+      "on_false": [
+        "5",
+        0
+      ],
+      "on_true": [
+        "41",
+        0
+      ]
+    }
+  },
+  "43": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "qwen_edit/v7_preview",
+      "images": [
+        "42",
+        0
+      ]
+    }
+  },
+  "45": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "prompt": [
+        "29",
+        0
+      ],
+      "negative_prompt": [
+        "38",
+        0
+      ],
+      "resolution": 0,
+      "clip": [
+        "37",
+        1
+      ],
+      "images.image_1": [
+        "9",
+        0
+      ],
+      "images.image_2": [
+        "72",
+        0
+      ],
+      "images.image_3": [
+        "77",
+        0
+      ],
+      "images.image_4": [
+        "82",
+        0
+      ],
+      "vae": [
+        "36",
+        0
+      ]
+    }
+  },
+  "46": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": [
+        "60",
+        0
+      ],
+      "steps": 25,
+      "cfg": 3,
+      "sampler_name": "dpm_2",
+      "scheduler": "normal",
+      "denoise": 0.4,
+      "model": [
+        "37",
+        0
+      ],
+      "positive": [
+        "45",
+        0
+      ],
+      "negative": [
+        "45",
+        1
+      ],
+      "latent_image": [
+        "49",
+        0
+      ]
+    }
+  },
+  "47": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": [
+        "9",
+        0
+      ]
+    }
+  },
+  "48": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "upscale_method": "lanczos",
+      "width": [
+        "47",
+        0
+      ],
+      "height": [
+        "47",
+        1
+      ],
+      "crop": "disabled",
+      "image": [
+        "41",
+        0
+      ]
+    }
+  },
+  "49": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "48",
+        0
+      ],
+      "vae": [
+        "36",
+        0
+      ]
+    }
+  },
+  "50": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "46",
+        0
+      ],
+      "vae": [
+        "36",
+        0
+      ]
+    }
+  },
+  "51": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "3",
+        0
+      ],
+      "on_false": [
+        "5",
+        0
+      ],
+      "on_true": [
+        "50",
+        0
+      ]
+    }
+  },
+  "52": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "qwen_edit/v7_final",
+      "images": [
+        "51",
+        0
+      ]
+    }
+  },
+  "54": {
+    "class_type": "RTXVideoSuperResolution",
+    "inputs": {
+      "resize_type": "scale by multiplier",
+      "resize_type.scale": [
+        "59",
+        0
+      ],
+      "quality": "HIGHBITRATE_ULTRA",
+      "strength": 1,
+      "image_encoding": "8-bit RGB",
+      "images": [
+        "50",
+        0
+      ]
+    }
+  },
+  "55": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "4",
+        0
+      ],
+      "on_false": [
+        "5",
+        0
+      ],
+      "on_true": [
+        "54",
+        0
+      ]
+    }
+  },
+  "56": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "qwen_edit/v7_upscaled",
+      "images": [
+        "55",
+        0
+      ]
+    }
+  },
+  "57": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 2560
+    }
+  },
+  "58": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": [
+        "50",
+        0
+      ]
+    }
+  },
+  "59": {
+    "class_type": "ComfyMathExpression",
+    "inputs": {
+      "expression": "min(4, max(1, c / max(a, b)))",
+      "values.a": [
+        "58",
+        0
+      ],
+      "values.b": [
+        "58",
+        1
+      ],
+      "values.c": [
+        "57",
+        0
+      ]
+    }
+  },
+  "60": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 0
+    }
+  },
+  "61": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 1920
+    }
+  },
+  "62": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 1080
+    }
+  },
+  "63": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    }
+  },
+  "64": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": [
+        "7",
+        0
+      ]
+    }
+  },
+  "65": {
+    "class_type": "ComfyMathExpression",
+    "inputs": {
+      "expression": "min(8 if e else 1, c / a, d / b)",
+      "values.a": [
+        "64",
+        0
+      ],
+      "values.b": [
+        "64",
+        1
+      ],
+      "values.c": [
+        "61",
+        0
+      ],
+      "values.d": [
+        "62",
+        0
+      ],
+      "values.e": [
+        "63",
+        0
+      ]
+    }
+  },
+  "66": {
+    "class_type": "ResizeImageMaskNode",
+    "inputs": {
+      "resize_type": "scale by multiplier",
+      "resize_type.multiplier": [
+        "65",
+        0
+      ],
+      "scale_method": "lanczos",
+      "input": [
+        "7",
+        0
+      ]
+    }
+  },
+  "67": {
+    "class_type": "ImagePadKJ",
+    "inputs": {
+      "left": 0,
+      "right": 0,
+      "top": 0,
+      "bottom": 0,
+      "extra_padding": 0,
+      "pad_mode": "color",
+      "color": "128, 128, 128",
+      "image": [
+        "66",
+        0
+      ],
+      "target_width": [
+        "61",
+        0
+      ],
+      "target_height": [
+        "62",
+        0
+      ]
+    }
+  },
+  "68": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": [
+        "11",
+        0
+      ]
+    }
+  },
+  "69": {
+    "class_type": "ComfyMathExpression",
+    "inputs": {
+      "expression": "min(8 if e else 1, c / a, d / b)",
+      "values.a": [
+        "68",
+        0
+      ],
+      "values.b": [
+        "68",
+        1
+      ],
+      "values.c": [
+        "61",
+        0
+      ],
+      "values.d": [
+        "62",
+        0
+      ],
+      "values.e": [
+        "63",
+        0
+      ]
+    }
+  },
+  "70": {
+    "class_type": "ResizeImageMaskNode",
+    "inputs": {
+      "resize_type": "scale by multiplier",
+      "resize_type.multiplier": [
+        "69",
+        0
+      ],
+      "scale_method": "lanczos",
+      "input": [
+        "11",
+        0
+      ]
+    }
+  },
+  "71": {
+    "class_type": "ImagePadKJ",
+    "inputs": {
+      "left": 0,
+      "right": 0,
+      "top": 0,
+      "bottom": 0,
+      "extra_padding": 0,
+      "pad_mode": "color",
+      "color": "128, 128, 128",
+      "image": [
+        "70",
+        0
+      ],
+      "target_width": [
+        "61",
+        0
+      ],
+      "target_height": [
+        "62",
+        0
+      ]
+    }
+  },
+  "72": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "10",
+        0
+      ],
+      "on_true": [
+        "71",
+        0
+      ]
+    }
+  },
+  "73": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": [
+        "15",
+        0
+      ]
+    }
+  },
+  "74": {
+    "class_type": "ComfyMathExpression",
+    "inputs": {
+      "expression": "min(8 if e else 1, c / a, d / b)",
+      "values.a": [
+        "73",
+        0
+      ],
+      "values.b": [
+        "73",
+        1
+      ],
+      "values.c": [
+        "61",
+        0
+      ],
+      "values.d": [
+        "62",
+        0
+      ],
+      "values.e": [
+        "63",
+        0
+      ]
+    }
+  },
+  "75": {
+    "class_type": "ResizeImageMaskNode",
+    "inputs": {
+      "resize_type": "scale by multiplier",
+      "resize_type.multiplier": [
+        "74",
+        0
+      ],
+      "scale_method": "lanczos",
+      "input": [
+        "15",
+        0
+      ]
+    }
+  },
+  "76": {
+    "class_type": "ImagePadKJ",
+    "inputs": {
+      "left": 0,
+      "right": 0,
+      "top": 0,
+      "bottom": 0,
+      "extra_padding": 0,
+      "pad_mode": "color",
+      "color": "128, 128, 128",
+      "image": [
+        "75",
+        0
+      ],
+      "target_width": [
+        "61",
+        0
+      ],
+      "target_height": [
+        "62",
+        0
+      ]
+    }
+  },
+  "77": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "14",
+        0
+      ],
+      "on_true": [
+        "76",
+        0
+      ]
+    }
+  },
+  "78": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": [
+        "19",
+        0
+      ]
+    }
+  },
+  "79": {
+    "class_type": "ComfyMathExpression",
+    "inputs": {
+      "expression": "min(8 if e else 1, c / a, d / b)",
+      "values.a": [
+        "78",
+        0
+      ],
+      "values.b": [
+        "78",
+        1
+      ],
+      "values.c": [
+        "61",
+        0
+      ],
+      "values.d": [
+        "62",
+        0
+      ],
+      "values.e": [
+        "63",
+        0
+      ]
+    }
+  },
+  "80": {
+    "class_type": "ResizeImageMaskNode",
+    "inputs": {
+      "resize_type": "scale by multiplier",
+      "resize_type.multiplier": [
+        "79",
+        0
+      ],
+      "scale_method": "lanczos",
+      "input": [
+        "19",
+        0
+      ]
+    }
+  },
+  "81": {
+    "class_type": "ImagePadKJ",
+    "inputs": {
+      "left": 0,
+      "right": 0,
+      "top": 0,
+      "bottom": 0,
+      "extra_padding": 0,
+      "pad_mode": "color",
+      "color": "128, 128, 128",
+      "image": [
+        "80",
+        0
+      ],
+      "target_width": [
+        "61",
+        0
+      ],
+      "target_height": [
+        "62",
+        0
+      ]
+    }
+  },
+  "82": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "18",
+        0
+      ],
+      "on_true": [
+        "81",
+        0
+      ]
+    }
+  }
+}

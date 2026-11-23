@@ -1,0 +1,250 @@
+{
+  "format": 1,
+  "name": "qwen2.1-with-lora",
+  "version": 7,
+  "source": "qwen2.1-with-lora-v7.json converted from UI format without its two comparison views; the built-in prompt writer never runs because positive_prompt replaces it",
+  "inputs": {
+    "image_1": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "7",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "required": true
+    },
+    "image_2": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "11",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "toggle": {
+        "node": "10",
+        "class_type": "PrimitiveBoolean",
+        "input": "value"
+      },
+      "fallback": "image_1"
+    },
+    "image_3": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "15",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "toggle": {
+        "node": "14",
+        "class_type": "PrimitiveBoolean",
+        "input": "value"
+      },
+      "fallback": "image_1"
+    },
+    "image_4": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "19",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "toggle": {
+        "node": "18",
+        "class_type": "PrimitiveBoolean",
+        "input": "value"
+      },
+      "fallback": "image_1"
+    },
+    "positive_prompt": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "28",
+          "class_type": "PrimitiveStringMultiline",
+          "input": "value"
+        }
+      ],
+      "required": true,
+      "toggle": {
+        "node": "27",
+        "class_type": "PrimitiveBoolean",
+        "input": "value"
+      }
+    },
+    "negative_prompt": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "38",
+          "class_type": "PrimitiveStringMultiline",
+          "input": "value"
+        }
+      ]
+    },
+    "seed": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "60",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "required": true,
+      "min": 0,
+      "max": 9223372036854775807
+    },
+    "canvas_width": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "61",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 64,
+      "max": 8192
+    },
+    "canvas_height": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "62",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 64,
+      "max": 8192
+    },
+    "enlarge_small": {
+      "type": "bool",
+      "targets": [
+        {
+          "node": "63",
+          "class_type": "PrimitiveBoolean",
+          "input": "value"
+        }
+      ]
+    },
+    "preview_megapixels": {
+      "type": "float",
+      "targets": [
+        {
+          "node": "8",
+          "class_type": "ImageScaleToTotalPixels",
+          "input": "megapixels"
+        }
+      ],
+      "min": 0.01,
+      "max": 16
+    },
+    "final_megapixels": {
+      "type": "float",
+      "targets": [
+        {
+          "node": "9",
+          "class_type": "ImageScaleToTotalPixels",
+          "input": "megapixels"
+        }
+      ],
+      "min": 0.01,
+      "max": 16
+    },
+    "upscale_longest_side": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "57",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 64,
+      "max": 8192
+    },
+    "make_preview": {
+      "type": "bool",
+      "targets": [
+        {
+          "node": "2",
+          "class_type": "PrimitiveBoolean",
+          "input": "value"
+        }
+      ]
+    },
+    "make_final": {
+      "type": "bool",
+      "targets": [
+        {
+          "node": "3",
+          "class_type": "PrimitiveBoolean",
+          "input": "value"
+        }
+      ]
+    },
+    "make_upscaled": {
+      "type": "bool",
+      "targets": [
+        {
+          "node": "4",
+          "class_type": "PrimitiveBoolean",
+          "input": "value"
+        }
+      ]
+    },
+    "preview_prefix": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "43",
+          "class_type": "SaveImage",
+          "input": "filename_prefix"
+        }
+      ]
+    },
+    "final_prefix": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "52",
+          "class_type": "SaveImage",
+          "input": "filename_prefix"
+        }
+      ]
+    },
+    "upscaled_prefix": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "56",
+          "class_type": "SaveImage",
+          "input": "filename_prefix"
+        }
+      ]
+    }
+  },
+  "outputs": {
+    "preview": {
+      "node": "43",
+      "class_type": "SaveImage"
+    },
+    "final": {
+      "node": "52",
+      "class_type": "SaveImage"
+    },
+    "upscaled": {
+      "node": "56",
+      "class_type": "SaveImage"
+    }
+  }
+}
