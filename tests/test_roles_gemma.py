@@ -85,3 +85,37 @@ def test_an_unreachable_server_is_a_gemma_error():
     # Port 9 (discard) on loopback is closed on a normal PC.
     with pytest.raises(GemmaError):
         GemmaClient("http://127.0.0.1:9", timeout=2).ask("s", "t", [], {"type": "object"})
+
+
+def test_an_unloaded_model_is_asked_once_more(monkeypatch):
+    from memcraft.roles import gemma as module
+
+    monkeypatch.setattr(module, "RELOAD_PAUSE", 0)
+    calls = []
+
+    def post(url, body, timeout):
+        calls.append(url)
+        if len(calls) == 1:
+            raise module.GemmaError('Gemma answered 500: {"message":"group: model unloaded"}')
+        return {"choices": [{"message": {"content": '{"ok": 1}'}, "finish_reason": "stop"}]}
+
+    client = module.GemmaClient("http://127.0.0.1:1", post=post)
+    assert client.ask("s", "t", [], {"type": "object"}).data == {"ok": 1}
+    assert len(calls) == 2
+
+
+def test_other_errors_are_not_repeated(monkeypatch):
+    from memcraft.roles import gemma as module
+
+    calls = []
+
+    def post(url, body, timeout):
+        calls.append(url)
+        raise module.GemmaError("Gemma answered 500: something else")
+
+    client = module.GemmaClient("http://127.0.0.1:1", post=post)
+    import pytest
+
+    with pytest.raises(module.GemmaError):
+        client.ask("s", "t", [], {"type": "object"})
+    assert len(calls) == 1

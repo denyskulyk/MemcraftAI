@@ -85,6 +85,10 @@ def _urllib_post(
         raise GemmaError("Gemma's answer is not JSON") from error
 
 
+# Seconds to wait before asking again when llama-swap unloaded the model mid-request.
+RELOAD_PAUSE = 2.0
+
+
 class GemmaClient:
     """`base_url` is the server root, such as http://127.0.0.1:8098 (without /v1)."""
 
@@ -141,11 +145,16 @@ class GemmaClient:
         if self.model:
             body["model"] = self.model
         started = time.monotonic()
-        reply = self._post(
-            self.base_url + "/v1/chat/completions",
-            body,
-            self.timeout if timeout is None else timeout,
-        )
+        url = self.base_url + "/v1/chat/completions"
+        wait = self.timeout if timeout is None else timeout
+        try:
+            reply = self._post(url, body, wait)
+        except GemmaError as error:
+            # llama-swap drops a request whose model was unloaded meanwhile; ask once more.
+            if "model unloaded" not in str(error):
+                raise
+            time.sleep(RELOAD_PAUSE)
+            reply = self._post(url, body, wait)
         seconds = round(time.monotonic() - started, 1)
         try:
             choice = reply["choices"][0]

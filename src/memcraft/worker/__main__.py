@@ -134,9 +134,12 @@ def _real(engine: Engine, args: argparse.Namespace, settings: object) -> int:
     )
 
     def unload(lane: JobLane) -> None:
+        # Each lane unloads only its own model: the render lane pausing must not pull Gemma
+        # away from an idea the idea lane is still asking about.
         if lane is JobLane.RENDER:
             comfy.free()
-        gemma.stop()
+        else:
+            gemma.stop()
 
     # A server that a step starts (ComfyUI up to 5 min, Gemma about 20 s from the RAM cache,
     # longer from disk) does not answer meanwhile, so the answer limit covers a start.
