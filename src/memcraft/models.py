@@ -343,6 +343,8 @@ class Idea(Base):
     id: Mapped[uuid.UUID] = _id()
     job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
     text: Mapped[str]
+    # How the chat agent understood the friend's own idea; empty for its own ideas.
+    understood: Mapped[str | None]
     score: Mapped[int]
     reason: Mapped[str]
     proposed_by: Mapped[IdeaSource] = mapped_column(_text_enum(IdeaSource, "proposed_by"))

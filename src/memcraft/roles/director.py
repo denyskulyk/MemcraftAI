@@ -1,0 +1,520 @@
+"""The director: Qwen 3.8 turns the approved idea into LTX-2.5 prompts.
+
+Qwen answers in labelled sections ("TITLE: ...") that this code turns into JSON; in E0 its
+nested JSON broke on quoted speech and line breaks, the sections never did. A missing section
+costs one retry with a new seed. Qwen writes "image1" where the keyframe model needs
+"<image1>", so the code rewrites the tags.
+
+Two regimes:
+- multishot: one photo is the first frame; one prompt per LTX run, 1 shot by default, 2 allowed.
+- keyframes: a bible (people, place, light, camera), three keyframe prompts with their frame
+  positions, and one prompt per LTX run between them.
+
+A long video is two runs; the second starts from the last frame of the first, so the runs
+share that frame. Frame counts are 8n+1: one run has 153 to 297, a long video 305 to 593.
+"""
+
+from __future__ import annotations
+
+import random
+import re
+import time
+from collections.abc import Callable, Sequence
+from dataclasses import asdict, dataclass, field
+from typing import Any
+
+from memcraft.engines.keyframes import matching_prompt
+from memcraft.models import JobLength, PromptRole, PromptVersion
+from memcraft.roles.seed import QWEN, fill, parts, prompt_file
+
+# (system prompt, user text, images in order, seed) -> Qwen's raw answer
+type TextRunner = Callable[[str, str, Sequence[bytes], int], str]
+
+FPS = 30
+FRAME_RANGE = {JobLength.SHORT: (153, 297), JobLength.LONG: (305, 593)}
+DEFAULT_FRAMES = {JobLength.SHORT: 241, JobLength.LONG: 481}
+MAX_SHOTS = 2
+MAX_RUN_WORDS = 220
+_SEED_LIMIT = 2**31 - 1
+
+
+class DirectorError(Exception):
+    pass
+
+
+class SectionsMissingError(DirectorError):
+    def __init__(self, missing: Sequence[str], raw: str) -> None:
+        super().__init__("missing " + ", ".join(missing))
+        self.missing = list(missing)
+        self.raw = raw
+
+
+class FrameCountError(DirectorError, ValueError):
+    pass
+
+
+# Frames
+
+
+def check_frames(frames: int, length: JobLength) -> int:
+    low, high = FRAME_RANGE[length]
+    if type(frames) is not int or frames % 8 != 1 or not low <= frames <= high:
+        raise FrameCountError(f"a {length.value} video has 8n+1 frames from {low} to {high}")
+    return frames
+
+
+def split_runs(frames: int, length: JobLength) -> list[int]:
+    """Frames of each LTX run. Two runs share one frame, so they add up to frames + 1."""
+    check_frames(frames, length)
+    if length is JobLength.SHORT:
+        return [frames]
+    steps = (frames - 1) // 8
+    first = (steps + 1) // 2
+    return [8 * first + 1, 8 * (steps - first) + 1]
+
+
+def run_starts(runs: Sequence[int]) -> list[int]:
+    """The frame of the whole video at which each run begins."""
+    starts, at = [], 0
+    for count in runs:
+        starts.append(at)
+        at += count - 1
+    return starts
+
+
+def render_seeds(seed: int, count: int) -> list[int]:
+    """`count` seeds that follow from one job seed, so a retry of the plan draws the same."""
+    rng = random.Random(seed)  # noqa: S311 - render seeds, not secrets
+    return [rng.randrange(1, _SEED_LIMIT) for _ in range(count)]
+
+
+# Parsing
+
+
+_THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
+_FENCE = re.compile(r"^\s*```\w*\s*$", re.M)
+_TAG = re.compile(r"<?\bimage\s*([1-9])\b>?", re.I)
+
+
+_WIDE_COLON = "\N{FULLWIDTH COLON}"
+
+
+def _label_pattern(labels: Sequence[str]) -> re.Pattern[str]:
+    names = sorted({*labels}, key=len, reverse=True)
+    # A RUN or KEYFRAME label Qwen invented still ends the section before it.
+    alternatives = [re.escape(name).replace(r"\ ", r"\s+") for name in names]
+    alternatives += [r"RUN\s+\d+", r"KEYFRAME\s+[A-Z]+"]
+    return re.compile(
+        r"^[ \t>#*_-]*(" + "|".join(alternatives) + r")[ \t*_]*[:" + _WIDE_COLON + r"][ \t*_]*",
+        re.M | re.I,
+    )
+
+
+def _clean_value(value: str) -> str:
+    value = " ".join(value.split()).strip("*_ ").strip()
+    for quote in ('"', "“”"):
+        opening, closing = quote[0], quote[-1]
+        inner = value[1:-1]
+        if (
+            len(value) > 1
+            and value[0] == opening
+            and value[-1] == closing
+            and opening not in inner
+            and closing not in inner
+        ):
+            value = inner.strip()
+    return value
+
+
+def parse_sections(text: str, labels: Sequence[str]) -> tuple[dict[str, str], list[str]]:
+    """Labelled sections by their label in capitals, and problems that did not stop parsing.
+
+    Raises SectionsMissingError if a label is missing or empty.
+    """
+    clean = _FENCE.sub("", _THINK.sub("", text))
+    wanted = {" ".join(label.upper().split()) for label in labels}
+    pieces = _label_pattern(labels).split(clean)
+    found: dict[str, str] = {}
+    problems: list[str] = []
+    for index in range(1, len(pieces) - 1, 2):
+        label = " ".join(pieces[index].upper().split())
+        value = _clean_value(pieces[index + 1])
+        if label not in wanted:
+            problems.append(f"unexpected section {label}")
+        elif label in found and value:
+            problems.append(f"{label} appears twice; the first is kept")
+        elif value:
+            found[label] = value
+    missing = [label for label in labels if not found.get(" ".join(label.upper().split()))]
+    if missing:
+        raise SectionsMissingError(missing, text)
+    return found, problems
+
+
+def image_tags(text: str) -> str:
+    """Rewrite "image1", "Image 1" and "<image1>" all as "<image1>"."""
+    return _TAG.sub(lambda match: f"<image{match.group(1)}>", text)
+
+
+def for_ltx(text: str) -> str:
+    """A run prompt without picture tags, which only the keyframe model understands:
+    "the man from image1 waves" becomes "the man waves"."""
+    text = re.sub(r"\s*\b(?:from|in|of)\s+<?\bimage\s*[1-9]\b>?", "", text, flags=re.I)
+    text = _TAG.sub("", text)
+    return re.sub(r"\s+([,.;:!?])", r"\1", " ".join(text.split()))
+
+
+def name_people(body: str, people: Sequence[dict[str, Any]], count: int) -> tuple[str, list[str]]:
+    """A keyframe that names every photo as <imageN>, and notes on what was repaired.
+
+    Qwen sometimes writes only the tag ("the red-jacket man"). The keyframe model needs the
+    picture, so " from <imageN>" goes after the first mention of the tag, or, if the tag is
+    not there either, a sentence naming the person is added.
+    """
+    notes = []
+    for number in range(1, count + 1):
+        if number in tags_in(body):
+            continue
+        person = next((p for p in people if p.get("image") == number), None)
+        tag = (person or {}).get("tag", "")
+        found = re.search(re.escape(tag), body, re.I) if tag else None
+        if found:
+            body = f"{body[: found.end()]} from <image{number}>{body[found.end() :]}"
+            notes.append(f"<image{number}> added after {tag!r}")
+        else:
+            look = (person or {}).get("look", "")
+            who = tag or "the person"
+            body = f"{body} {who[0].upper()}{who[1:]} from <image{number}>" + (
+                f": {look}." if look else " is in the picture."
+            )
+            notes.append(f"<image{number}> not named; a sentence was added")
+    return body, notes
+
+
+def tags_in(text: str) -> set[int]:
+    return {int(number) for number in re.findall(r"<image([1-9])>", text)}
+
+
+def _people(value: str, with_images: bool) -> list[dict[str, Any]]:
+    people = []
+    for chunk in value.split("|"):
+        chunk = chunk.strip(" ;")
+        if not chunk:
+            continue
+        person: dict[str, Any] = {}
+        if with_images:
+            match = re.match(r"<image([1-9])>\s*[:\-]?\s*", chunk)
+            if match:
+                person["image"] = int(match.group(1))
+                chunk = chunk[match.end() :]
+            tag, _, look = chunk.partition(",")
+        else:
+            tag, _, look = chunk.partition(":")
+            if not look:
+                tag, _, look = chunk.partition(",")
+        person["tag"] = tag.strip()
+        person["look"] = look.strip()
+        people.append(person)
+    return people
+
+
+def _cut_words(prompt: str) -> int:
+    return len(re.findall(r"\bcuts?\b|\bdissolves?\b|\btransitions?\s+to\b", prompt, re.I))
+
+
+# Results
+
+
+@dataclass(frozen=True)
+class Run:
+    prompt: str
+    frames: int
+    seed: int
+    # The frame of the whole video where it begins.
+    start: int
+    # What its first frame is: "photo", "keyframe" (the start keyframe) or
+    # "previous_last_frame" (the real last frame of the run before).
+    first: str
+    # Keyframes this run is guided by: (keyframe "at", frame index inside the run).
+    keyframes: list[tuple[str, int]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class Keyframe:
+    """`action` is the director's part of the keyframe prompt. The full prompt is
+    memcraft.engines.matching_prompt(action, place=, light=, photos=, start_reference=), which
+    puts the new place first for the start keyframe and "same scene as" the start keyframe
+    for the others; prompt() does that."""
+
+    at: str
+    action: str
+    # The frame of the whole video it stands for.
+    frame: int
+    seed: int
+    # References for the keyframe model in order: photo numbers from 1, then "start" for
+    # the start keyframe once it is drawn. The prompt calls them <image1>, <image2>, ...
+    references: list[int | str]
+
+    def prompt(self, bible: dict[str, Any]) -> str:
+        return matching_prompt(
+            self.action,
+            place=bible["place"],
+            light=bible["light"],
+            photos=sum(1 for ref in self.references if ref != "start"),
+            start_reference="start" in self.references,
+        )
+
+
+@dataclass(frozen=True)
+class MultishotPlan:
+    title: str
+    people: list[dict[str, Any]]
+    shots: int
+    frames: int
+    runs: list[Run]
+    seconds: float
+    attempts: int
+    seed: int
+    problems: list[str]
+    raw: str
+
+    def as_output(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class KeyframePlan:
+    title: str
+    bible: dict[str, Any]
+    keyframes: list[Keyframe]
+    frames: int
+    runs: list[Run]
+    seconds: float
+    attempts: int
+    seed: int
+    problems: list[str]
+    raw: str
+
+    def as_output(self) -> dict[str, Any]:
+        """For job_steps.output; each keyframe also carries its full prompt."""
+        output = asdict(self)
+        for keyframe, row in zip(self.keyframes, output["keyframes"], strict=True):
+            row["prompt"] = keyframe.prompt(self.bible)
+        return output
+
+
+# Calls
+
+
+def _ask(
+    run_text: TextRunner,
+    system: str,
+    user: str,
+    images: Sequence[bytes],
+    labels: Sequence[str],
+    seed: int,
+    clock: Callable[[], float],
+) -> tuple[dict[str, str], list[str], str, float, int, int]:
+    """Sections, problems, raw text, seconds, attempts and the seed that worked."""
+    started = clock()
+    try:
+        raw = run_text(system, user, images, seed)
+        found, problems = parse_sections(raw, labels)
+        return found, problems, raw, round(clock() - started, 1), 1, seed
+    except SectionsMissingError as first:
+        # One retry with a new seed; a second miss goes to the caller with its raw text.
+        raw = run_text(system, user, images, seed + 1)
+        found, problems = parse_sections(raw, labels)
+        problems.insert(0, f"first answer: {first}")
+        return found, problems, raw, round(clock() - started, 1), 2, seed + 1
+
+
+def direct_multishot(
+    run_text: TextRunner,
+    prompt: PromptVersion,
+    photo: bytes,
+    idea: str,
+    *,
+    length: JobLength = JobLength.SHORT,
+    shots: int = 1,
+    frames: int | None = None,
+    seed: int = 7,
+    clock: Callable[[], float] = time.monotonic,
+) -> MultishotPlan:
+    if not 1 <= shots <= MAX_SHOTS:
+        raise DirectorError(f"a multishot video has 1 to {MAX_SHOTS} shots")
+    if not idea.strip():
+        raise DirectorError("the director needs the approved idea")
+    frames = check_frames(DEFAULT_FRAMES[length] if frames is None else frames, length)
+    counts = split_runs(frames, length)
+    found = parts(prompt.text, prompt_file(PromptRole.DIRECTOR_MULTISHOT, QWEN).parts)
+    two = len(counts) == 2
+    run_seconds = round((counts[0] - 1) / FPS)
+    system = fill(
+        found["system"],
+        {
+            "seconds": round((frames - 1) / FPS),
+            "runs": fill(found["runs_two" if two else "runs_one"], {"run_seconds": run_seconds}),
+            "labels": fill(found["labels_two" if two else "labels_one"]),
+            "shots": shots,
+            "shot_rule": fill(found["shot_rule_many" if shots > 1 else "shot_rule_one"]),
+            "words": MAX_RUN_WORDS,
+        },
+    )
+    user = fill(found["user"], {"idea": idea.strip()})
+    labels = ["TITLE", "PEOPLE"] + [f"RUN {i + 1}" for i in range(len(counts))]
+    sections, problems, raw, seconds, attempts, used = _ask(
+        run_text, system, user, [photo], labels, seed, clock
+    )
+    seeds = render_seeds(seed, len(counts))
+    runs = []
+    for index, (count, start) in enumerate(zip(counts, run_starts(counts), strict=True)):
+        text = sections[f"RUN {index + 1}"]
+        cuts = _cut_words(text)
+        if shots == 1 and cuts and not re.search(r"\bno cuts?\b", text, re.I):
+            problems.append(f"RUN {index + 1}: {cuts} cut words in a single take")
+        if shots > 1 and cuts < shots - 1:
+            problems.append(f"RUN {index + 1}: only {cuts} cut words for {shots} shots")
+        if len(text.split()) > MAX_RUN_WORDS + 40:
+            problems.append(f"RUN {index + 1}: {len(text.split())} words")
+        runs.append(
+            Run(
+                prompt=for_ltx(text),
+                frames=count,
+                seed=seeds[index],
+                start=start,
+                first="photo" if index == 0 else "previous_last_frame",
+            )
+        )
+    return MultishotPlan(
+        title=sections["TITLE"],
+        people=_people(sections["PEOPLE"], with_images=False),
+        shots=shots,
+        frames=frames,
+        runs=runs,
+        seconds=seconds,
+        attempts=attempts,
+        seed=used,
+        problems=problems,
+        raw=raw,
+    )
+
+
+KEYFRAME_LABELS = (
+    "TITLE",
+    "PEOPLE",
+    "PLACE",
+    "LIGHT",
+    "CAMERA",
+    "KEYFRAME START",
+    "KEYFRAME MIDDLE",
+    "KEYFRAME END",
+)
+
+
+def keyframe_frames(counts: Sequence[int]) -> dict[str, int]:
+    """Where start, middle and end sit in the whole video, as memcraft.engines.plan() guides
+    them: the middle half way through the first run, on a multiple of 8, the end on the last
+    frame. A second run starts from the real last frame of the first and leads to the end."""
+    middle = 8 * round(counts[0] / 16)
+    return {"start": 0, "middle": middle, "end": sum(counts) - len(counts)}
+
+
+def direct_keyframes(
+    run_text: TextRunner,
+    prompt: PromptVersion,
+    photos: Sequence[bytes],
+    idea: str,
+    *,
+    length: JobLength = JobLength.SHORT,
+    frames: int | None = None,
+    seed: int = 7,
+    clock: Callable[[], float] = time.monotonic,
+) -> KeyframePlan:
+    if not 1 <= len(photos) <= 3:
+        raise DirectorError("the keyframes regime takes 1 to 3 photos")
+    if not idea.strip():
+        raise DirectorError("the director needs the approved idea")
+    frames = check_frames(DEFAULT_FRAMES[length] if frames is None else frames, length)
+    counts = split_runs(frames, length)
+    two = len(counts) == 2
+    found = parts(prompt.text, prompt_file(PromptRole.DIRECTOR_KEYFRAMES, QWEN).parts)
+    system = fill(
+        found["system"],
+        {
+            "kind": fill(
+                found["kind_long" if two else "kind_short"], {"seconds": round((frames - 1) / FPS)}
+            ),
+            "labels": fill(found["labels_two" if two else "labels_one"]),
+        },
+    )
+    user = fill(found["user"], {"idea": idea.strip()})
+    labels = [*KEYFRAME_LABELS, *(f"RUN {i + 1}" for i in range(len(counts)))]
+    sections, problems, raw, seconds, attempts, used = _ask(
+        run_text, system, user, list(photos), labels, seed, clock
+    )
+    sections = {label: image_tags(value) for label, value in sections.items()}
+    count = len(photos)
+    for label, value in sections.items():
+        extra = sorted(tags_in(value) - set(range(1, count + 1)))
+        if extra:
+            problems.append(f"{label}: names <image{extra[0]}> but there are {count} photos")
+    bible = {
+        "people": _people(sections["PEOPLE"], with_images=True),
+        "place": sections["PLACE"],
+        "light": sections["LIGHT"],
+        "camera": sections["CAMERA"],
+    }
+    if len(bible["people"]) != count:
+        problems.append(f"PEOPLE lists {len(bible['people'])} people for {count} photos")
+    seeds = render_seeds(seed, 3 + len(counts))
+    positions = keyframe_frames(counts)
+    tail = fill(found["suffix"])
+    keyframes = []
+    for index, at in enumerate(("start", "middle", "end")):
+        body, notes = name_people(sections[f"KEYFRAME {at.upper()}"], bible["people"], count)
+        problems += [f"KEYFRAME {at.upper()}: {note}" for note in notes]
+        if at == "start":
+            body = f"{bible['camera']} {body}"
+        if tail and tail.lower() not in body.lower():
+            body = f"{body} {tail}"
+        keyframes.append(
+            Keyframe(
+                at=at,
+                action=body,
+                frame=positions[at],
+                seed=seeds[index],
+                references=[*range(1, count + 1), *(["start"] if at != "start" else [])],
+            )
+        )
+    starts = run_starts(counts)
+    runs = []
+    for index, run_count in enumerate(counts):
+        inside = [
+            (at, frame - starts[index])
+            for at, frame in positions.items()
+            if starts[index] <= frame <= starts[index] + run_count - 1
+            and not (index > 0 and frame == starts[index])
+        ]
+        runs.append(
+            Run(
+                prompt=for_ltx(sections[f"RUN {index + 1}"]),
+                frames=run_count,
+                seed=seeds[3 + index],
+                start=starts[index],
+                first="keyframe" if index == 0 else "previous_last_frame",
+                keyframes=inside,
+            )
+        )
+    return KeyframePlan(
+        title=sections["TITLE"],
+        bible=bible,
+        keyframes=keyframes,
+        frames=frames,
+        runs=runs,
+        seconds=seconds,
+        attempts=attempts,
+        seed=used,
+        problems=problems,
+        raw=raw,
+    )

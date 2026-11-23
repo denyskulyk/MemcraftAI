@@ -1,4 +1,5 @@
 import threading
+import time
 import uuid
 from datetime import timedelta
 
@@ -63,7 +64,11 @@ def test_a_dead_holder_frees_the_lease(engine):
     with engine.connect() as admin:
         admin.execute(text("SELECT pg_terminate_backend(:pid)"), {"pid": pid})
         admin.commit()
-    assert second.try_acquire()
+    # The backend ends a moment after pg_terminate_backend returns.
+    deadline = time.monotonic() + 5
+    while not second.try_acquire():
+        assert time.monotonic() < deadline
+        time.sleep(0.05)
     assert not first.check()  # the holder learns that it lost the lease
     assert not first.held
     second.release()

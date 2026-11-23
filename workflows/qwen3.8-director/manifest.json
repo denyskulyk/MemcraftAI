@@ -1,0 +1,116 @@
+{
+  "format": 1,
+  "name": "qwen3.8-director",
+  "version": 1,
+  "source": "Text graph of the E0 spike (flows.text_graph): Qwen 3.8 27B in ComfyUI answers a system prompt and a user text about up to four pictures, scaled to 768x1344. ComfyUI checks every LoadImage, so images 2 to 4 fall back to image 1; the caller removes the links of images it did not give before queueing.",
+  "inputs": {
+    "system": {
+      "type": "string",
+      "required": true,
+      "targets": [
+        {
+          "node": "2",
+          "class_type": "PrimitiveStringMultiline",
+          "input": "value"
+        }
+      ]
+    },
+    "prompt": {
+      "type": "string",
+      "required": true,
+      "targets": [
+        {
+          "node": "11",
+          "class_type": "TextGenerateV2",
+          "input": "prompt"
+        }
+      ]
+    },
+    "seed": {
+      "type": "int",
+      "min": 0,
+      "max": 9007199254740992,
+      "targets": [
+        {
+          "node": "11",
+          "class_type": "TextGenerateV2",
+          "input": "sampling_mode.seed"
+        }
+      ]
+    },
+    "max_length": {
+      "type": "int",
+      "min": 64,
+      "max": 4096,
+      "targets": [
+        {
+          "node": "11",
+          "class_type": "TextGenerateV2",
+          "input": "max_length"
+        }
+      ]
+    },
+    "temperature": {
+      "type": "float",
+      "min": 0.0,
+      "max": 2.0,
+      "targets": [
+        {
+          "node": "11",
+          "class_type": "TextGenerateV2",
+          "input": "sampling_mode.temperature"
+        }
+      ]
+    },
+    "image_1": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "3",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "required": true
+    },
+    "image_2": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "5",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "fallback": "image_1"
+    },
+    "image_3": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "7",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "fallback": "image_1"
+    },
+    "image_4": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "9",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "fallback": "image_1"
+    }
+  },
+  "outputs": {
+    "text": {
+      "node": "12",
+      "class_type": "PreviewAny"
+    }
+  }
+}

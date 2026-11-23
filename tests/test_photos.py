@@ -821,7 +821,7 @@ def test_rollback_removes_the_photos(web, session, roots):
 # Copies for Gemma.
 
 
-@pytest.mark.parametrize(("number", "size"), [(1, (540, 960)), (2, (360, 640)), (3, (360, 640))])
+@pytest.mark.parametrize(("number", "size"), [(1, (360, 640)), (2, (540, 960)), (3, (540, 960))])
 def test_copy_size_by_photo_count(web, store, session, roots, number, size):
     job = new_job(session, number)
     saved = take(session, web, job, uploads(*[scene(1080, 1920)] * number))

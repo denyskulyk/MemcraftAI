@@ -34,7 +34,8 @@ MIN_CROP = (288, 512)
 MAX_OUTPUT = (2160, 3840)
 ASPECT_TOLERANCE = 0.01
 
-GEMMA_COPY_SIZES: Mapping[int, tuple[int, int]] = {1: (540, 960), 2: (360, 640), 3: (360, 640)}
+# E0.13: 360x640 keeps one photo near 10 s; 2 or 3 photos need 540x960 with a token cap.
+GEMMA_COPY_SIZES: Mapping[int, tuple[int, int]] = {1: (360, 640), 2: (540, 960), 3: (540, 960)}
 GEMMA_COPY_QUALITY = 90
 
 PHOTO_MIME = "image/png"

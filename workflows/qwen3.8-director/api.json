@@ -1,0 +1,143 @@
+{
+  "1": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3.8_27b_uncensored_heretic_w4a8_convrot_v2.safetensors",
+      "type": "stable_diffusion",
+      "device": "default"
+    }
+  },
+  "2": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": ""
+    }
+  },
+  "3": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "4": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "3",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 768,
+      "height": 1344,
+      "crop": "center"
+    }
+  },
+  "5": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "6": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "5",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 768,
+      "height": 1344,
+      "crop": "center"
+    }
+  },
+  "7": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "8": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "7",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 768,
+      "height": 1344,
+      "crop": "center"
+    }
+  },
+  "9": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "10": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "9",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 768,
+      "height": 1344,
+      "crop": "center"
+    }
+  },
+  "11": {
+    "class_type": "TextGenerateV2",
+    "inputs": {
+      "clip": [
+        "1",
+        0
+      ],
+      "prompt": "",
+      "max_length": 1800,
+      "sampling_mode": "on",
+      "sampling_mode.temperature": 0.7,
+      "sampling_mode.top_k": 20,
+      "sampling_mode.top_p": 0.9,
+      "sampling_mode.min_p": 0.0,
+      "sampling_mode.repetition_penalty": 1.05,
+      "sampling_mode.presence_penalty": 0.0,
+      "sampling_mode.seed": 7,
+      "thinking": false,
+      "use_default_template": true,
+      "mtp": "off",
+      "system_prompt": [
+        "2",
+        0
+      ],
+      "images.image1": [
+        "4",
+        0
+      ],
+      "images.image2": [
+        "6",
+        0
+      ],
+      "images.image3": [
+        "8",
+        0
+      ],
+      "images.image4": [
+        "10",
+        0
+      ]
+    }
+  },
+  "12": {
+    "class_type": "PreviewAny",
+    "inputs": {
+      "source": [
+        "11",
+        0
+      ]
+    }
+  }
+}

@@ -204,7 +204,8 @@ def test_the_exported_workflows_survive_the_database(session, folder):
     session.expire_all()
     found = get_active(session, WorkflowVersion, name=package.manifest.name)
     assert found.sha256 == package.sha256
-    values = {"positive_prompt": "a cat", "seed": 1}
+    values = {"positive_prompt": "a cat", "prompt": "a cat", "system": "s", "seed": 1}
+    values = {k: v for k, v in values.items() if k in package.manifest.inputs}
     values |= {name: "a.png" for name, x in package.manifest.inputs.items() if x.type == "image"}
     assert bind_workflow(found, values)
 
