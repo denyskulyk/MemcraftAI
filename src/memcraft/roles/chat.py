@@ -72,7 +72,15 @@ def build(
 
 
 def one_line(text: str, limit: int) -> str:
-    return " ".join(str(text).split())[:limit]
+    """One line of at most `limit` characters, cut after a whole sentence or word if needed."""
+    line = " ".join(str(text).split())
+    if len(line) <= limit:
+        return line
+    cut = line[:limit]
+    end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
+    if end >= limit // 2:
+        return cut[: end + 1]
+    return cut.rsplit(" ", 1)[0].rstrip(",;:") + "…"
 
 
 def run_chat(

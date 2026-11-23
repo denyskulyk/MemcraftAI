@@ -88,9 +88,8 @@ function showIdea(job) {
     $("idea-title").textContent = mine ? "Your idea, as the app understood it" : "The app's idea";
     $("idea-text").textContent = idea.text;
     $("idea-score").textContent = "Fun guess: " + idea.score + " / 10";
-    $("idea-reason").textContent = idea.understood
-      ? "How the app understood it: " + idea.understood + " Weak spot: " + idea.reason
-      : idea.reason;
+    // The idea is shown above in full; this line is only the app's note on it.
+    $("idea-reason").textContent = "Weak spot: " + idea.reason;
   } else if (job.idea_text) {
     $("idea-title").textContent = "Your idea";
     $("idea-text").textContent = job.idea_text;

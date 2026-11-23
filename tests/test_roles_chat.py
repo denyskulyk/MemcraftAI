@@ -108,3 +108,12 @@ def test_the_idea_records_its_prompt(session):
     idea = record_idea(session, job.id, result, stored)
     assert idea.prompt_version_id == stored.id
     assert (idea.text, idea.score, idea.proposed_by) == ("A pigeon audits the bench.", 5, "gemma")
+
+
+def test_long_text_is_cut_after_a_sentence_or_word():
+    from memcraft.roles.chat import one_line
+
+    assert one_line("Short one.", 50) == "Short one."
+    text = "First sentence is here. Second one runs on and on without end"
+    assert one_line(text, 40) == "First sentence is here."
+    assert one_line("word " * 20, 22) == "word word word word…"
