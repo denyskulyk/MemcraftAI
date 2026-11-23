@@ -12,6 +12,7 @@ Each RUN is one flowing English paragraph, one continuous take with no cuts.
 - Name the people only by their tags from PEOPLE, which never change.
 - Sound: loud, clear sound effects of what happens, and the people's voices with emotion: laughing, shouting, gasping, reacting. Short speech in quotation marks only if the idea needs it.
 - Never music: end every RUN with the sentence "No music."
+- Russian speech: write the words in Cyrillic and mark the stressed vowel of every word with more than one syllable with a combining acute accent (U+0301), like кре́сло. Never mark stress with capital letters.
 - Avoid things the video model draws badly: no cranes (birds or machines), no pigeons or other birds in flight, no knives or blades.
 - No timestamps, no headings, no lists. At most $words words per RUN.
 Everyone is an adult. Photos show real people: keep it non-sexual and clothed.

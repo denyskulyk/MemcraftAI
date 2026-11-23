@@ -1,6 +1,9 @@
+from pathlib import Path
+
 import pytest
 
 from memcraft.models import JobLength, PromptRole, PromptVersion
+from memcraft.roles import director
 from memcraft.roles.director import (
     KEYFRAME_LABELS,
     SAME_FRAMING,
@@ -574,3 +577,16 @@ def test_the_runner_uploads_by_hash_and_runs_only_the_text_node():
     assert first.endswith(".png") and second.endswith(".jpg") and len(first) == 36
     _, outputs, timeout = comfy.runs[0]
     assert outputs == ["12"] and timeout == 99
+
+
+@pytest.mark.parametrize(
+    "name", ["director-keyframes-qwen3.8.txt", "director-multishot-qwen3.8.txt"]
+)
+def test_russian_speech_uses_acute_stress_marks(name):
+    text = (Path(director.__file__).parent / "prompts" / name).read_text(encoding="utf-8")
+    assert "U+0301" in text and "кре́сло" in text
+
+
+def test_stress_marks_survive_the_run_prompt():
+    said = 'He shouts "Где моё кре́сло?"'
+    assert "кре́сло" in director.run_prompt(said)
