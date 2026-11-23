@@ -9,6 +9,8 @@
   --error: #b3261e;
   --ok: #1e7a3a;
   --frame: #ffd23f;
+  --warn: #8a5300;
+  --warn-bg: #fff4dc;
   color-scheme: light dark;
 }
 
@@ -23,6 +25,8 @@
     --accent-text: #10131a;
     --error: #ff8a80;
     --ok: #7fd59a;
+    --warn: #ffcf7a;
+    --warn-bg: #2e2614;
   }
 }
 
@@ -241,6 +245,16 @@ progress {
 .crop-handle.sw::after { left: 0; bottom: 0; }
 .crop-handle.se::after { right: 0; bottom: 0; }
 
+/* Someone is cut off by the crop frame: a hint, the friend may go on. */
+.warning {
+  color: var(--warn);
+  background: var(--warn-bg);
+  border-left: 4px solid var(--warn);
+  border-radius: 0 8px 8px 0;
+  padding: 6px 10px;
+  margin: 6px 0 0;
+}
+
 .note {
   border-left: 4px solid var(--accent);
   padding: 8px 12px;
@@ -331,4 +345,16 @@ button.danger {
 
 fieldset button.primary {
   margin-top: 8px;
+}
+
+.share-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0.5rem 0;
+}
+
+.share-row > * {
+  flex: 1 1 10rem;
+  text-align: center;
 }

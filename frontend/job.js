@@ -212,6 +212,81 @@ async function act(control, action) {
   }
 }
 
+// Share: the mp4 itself goes to the phone's share sheet (TikTok, Instagram, YouTube,
+// WhatsApp). It is fetched from the owner-checked /api/files and never gets a public link.
+const SHARES = {
+  preview: { button: "share-preview", hint: "share-preview-hint", label: "Share preview",
+    title: "My MemcraftAI preview", name: "memcraft-preview.mp4" },
+  release: { button: "share", hint: "share-hint", label: "Share",
+    title: "My MemcraftAI video", name: "memcraft-video.mp4" },
+};
+const sharedFiles = new Map(); // asset id -> File, so that a second tap shares at once
+
+function canShareFiles(files) {
+  if (!navigator.share || !navigator.canShare) return false;
+  try {
+    return navigator.canShare({ files });
+  } catch {
+    return false;
+  }
+}
+
+function downloadInstead(asset, hint) {
+  const link = document.createElement("a");
+  link.href = fileUrl(asset, true);
+  document.body.append(link);
+  link.click();
+  link.remove();
+  hint.textContent = "This browser cannot share videos, so the mp4 is downloading instead.";
+  hint.hidden = false;
+}
+
+async function shareVideo(kind) {
+  const share = SHARES[kind];
+  const button = $(share.button);
+  const hint = $(share.hint);
+  const asset = shown && shown.assets.find((a) => a.kind === kind);
+  if (!asset || button.disabled) return;
+  hint.hidden = true;
+  const probe = new File([""], share.name, { type: "video/mp4" });
+  if (!canShareFiles([probe])) return downloadInstead(asset, hint);
+
+  let file = sharedFiles.get(asset.id);
+  if (!file) {
+    button.disabled = true;
+    button.textContent = "Getting the video…";
+    try {
+      const answer = await fetch(fileUrl(asset, false));
+      if (!answer.ok) throw new Error("The server answered " + answer.status + ".");
+      const blob = await answer.blob();
+      file = new File([blob], share.name, { type: blob.type || asset.mime || "video/mp4" });
+      sharedFiles.set(asset.id, file);
+    } catch {
+      hint.textContent = "The video cannot be loaded right now. Please try again.";
+      hint.hidden = false;
+      return;
+    } finally {
+      button.disabled = false;
+      button.textContent = share.label;
+    }
+    if (!canShareFiles([file])) return downloadInstead(asset, hint);
+  }
+  try {
+    await navigator.share({ files: [file], title: share.title });
+  } catch (error) {
+    if (error.name === "AbortError") return; // the friend closed the share sheet
+    if (error.name === "NotAllowedError") {
+      // The tap was too long ago by the time the video arrived; now it is here.
+      hint.textContent = "The video is ready: tap " + share.label + " again.";
+      hint.hidden = false;
+      return;
+    }
+    downloadInstead(asset, hint);
+  }
+}
+
+$("share-preview").addEventListener("click", () => shareVideo("preview"));
+$("share").addEventListener("click", () => shareVideo("release"));
 $("approve").addEventListener("click", (e) => act(e.target, () => call("POST", jobPath + "/approve")));
 $("reject").addEventListener("click", (e) => act(e.target, () => call("POST", jobPath + "/reject")));
 $("release").addEventListener("click", (e) => {

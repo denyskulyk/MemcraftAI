@@ -33,6 +33,10 @@
       <section id="preview-box" hidden>
         <h2>Preview</h2>
         <video id="preview" class="player" controls playsinline preload="metadata"></video>
+        <div class="share-row">
+          <button id="share-preview" type="button">Share preview</button>
+        </div>
+        <p id="share-preview-hint" class="hint" role="status" hidden></p>
         <p id="preview-hint" class="hint">The preview is kept for 24 hours. Release it to keep the video.</p>
         <fieldset>
           <legend>Final quality</legend>
@@ -45,7 +49,11 @@
       <section id="video-box" hidden>
         <h2>Your video</h2>
         <video id="video" class="player" controls playsinline preload="metadata"></video>
-        <p><a id="download" class="button" href="#">Download mp4</a></p>
+        <div class="share-row">
+          <button id="share" type="button">Share</button>
+          <a id="download" class="button" href="#">Download mp4</a>
+        </div>
+        <p id="share-hint" class="hint" role="status" hidden></p>
       </section>
 
       <section id="delete-box" hidden>

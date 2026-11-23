@@ -10,11 +10,12 @@ const ACCESS = {
   blocked: "Your access is blocked.",
 };
 
-const photos = []; // {file, url, card, number, error, frame}
+const photos = []; // {file, url, card, title, message, warning, error, frame, faces, gone}
 const notes = new Map();
 let uploading = false;
 
 const byId = (id) => document.getElementById(id);
+const DETECT_SIDE = 1024; // the browser's own face check sees the photo at most this large
 
 function choice(name) {
   return document.querySelector(`input[name="${name}"]:checked`).value;
@@ -45,7 +46,7 @@ function addFiles(files) {
 }
 
 function addPhoto(file) {
-  const photo = { file, url: URL.createObjectURL(file), error: null, frame: null };
+  const photo = { file, url: URL.createObjectURL(file), error: null, frame: null, faces: null };
   const card = document.createElement("div");
   card.className = "photo";
   const head = document.createElement("div");
@@ -58,8 +59,13 @@ function addPhoto(file) {
   head.append(title, remove);
   const message = document.createElement("p");
   message.className = "error";
+  // Only a warning: the friend may want someone out of the picture.
+  const warning = document.createElement("p");
+  warning.className = "warning";
+  warning.setAttribute("role", "status");
+  warning.hidden = true;
   card.append(head, message);
-  Object.assign(photo, { card, title, message });
+  Object.assign(photo, { card, title, message, warning });
   photos.push(photo);
   byId("photos").append(card);
 
@@ -67,12 +73,13 @@ function addPhoto(file) {
   img.alt = "";
   img.draggable = false;
   img.addEventListener("load", () => {
-    photo.frame = new CropFrame(img);
+    photo.frame = new CropFrame(img, () => showFaceWarning(photo));
     if (!photo.frame.usable) {
       photo.error = "This photo is too small: it needs at least 288 x 512 pixels.";
       message.textContent = photo.error;
     }
-    card.append(photo.frame.element);
+    card.append(photo.frame.element, warning);
+    if (photo.frame.usable) checkFaces(photo, img);
     renumber();
     changed();
   });
@@ -89,11 +96,69 @@ function removePhoto(photo) {
   const index = photos.indexOf(photo);
   if (index < 0 || uploading) return;
   photos.splice(index, 1);
+  photo.gone = true;
   photo.card.remove();
   URL.revokeObjectURL(photo.url);
   byId("photo-error").textContent = "";
   renumber();
   changed();
+}
+
+// Once per photo: where the faces are. Then every move of the frame checks them in JS.
+async function checkFaces(photo, img) {
+  let faces = null;
+  if ("FaceDetector" in window) {
+    try {
+      faces = await facesInBrowser(img);
+    } catch {
+      faces = null; // the API is there but cannot run here: ask the server
+    }
+  }
+  if (faces === null) faces = await facesOnServer(photo.file);
+  if (photo.gone || faces === null) return; // no answer: no warning, the friend can go on
+  photo.faces = faces;
+  showFaceWarning(photo);
+}
+
+async function facesInBrowser(img) {
+  const scale = Math.min(1, DETECT_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.naturalWidth * scale);
+  canvas.height = Math.round(img.naturalHeight * scale);
+  // drawImage paints the photo upright, the way the page shows it.
+  canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+  const found = await new FaceDetector({ maxDetectedFaces: 20 }).detect(canvas);
+  return found.map(({ boundingBox: box }) => ({
+    x: box.x / canvas.width,
+    y: box.y / canvas.height,
+    w: box.width / canvas.width,
+    h: box.height / canvas.height,
+  }));
+}
+
+async function facesOnServer(file) {
+  let type = file.type;
+  if (!TYPES.includes(type)) type = /\.png$/i.test(file.name) ? "image/png" : "image/jpeg";
+  try {
+    const answer = await fetch("/api/faces", {
+      method: "POST",
+      headers: { "Content-Type": type },
+      body: file,
+    });
+    if (!answer.ok) return null;
+    const body = await answer.json();
+    return Array.isArray(body.faces) ? body.faces : null;
+  } catch {
+    return null;
+  }
+}
+
+function showFaceWarning(photo) {
+  if (!photo.faces || !photo.frame) return;
+  const text = faceWarning(photo.faces, photo.frame.crop());
+  // Set only on a change, so that a screen reader is not told the same thing on every move.
+  if (photo.warning.textContent !== text) photo.warning.textContent = text;
+  photo.warning.hidden = !text;
 }
 
 function renumber() {

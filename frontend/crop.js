@@ -159,3 +159,32 @@ class CropFrame {
     event.preventDefault();
   }
 }
+
+// How much of a face the frame shows: from 0 (none of it) to 1 (all of it). Both boxes are
+// fractions of the upright photo, {x, y, w, h}.
+function faceShown(face, crop) {
+  const width = Math.min(face.x + face.w, crop.x + crop.w) - Math.max(face.x, crop.x);
+  const height = Math.min(face.y + face.h, crop.y + crop.h) - Math.max(face.y, crop.y);
+  if (width <= 0 || height <= 0 || face.w <= 0 || face.h <= 0) return 0;
+  return (width * height) / (face.w * face.h);
+}
+
+const FACE_INSIDE = 0.9; // a face shown less than this is cut off
+const FACE_OUTSIDE = 0.02; // and shown at most this much, it is outside the frame
+
+// The warning for the faces against the frame, or "" when everybody is in it.
+function faceWarning(faces, crop) {
+  let cut = 0;
+  let outside = 0;
+  for (const face of faces || []) {
+    const shown = faceShown(face, crop);
+    if (shown <= FACE_OUTSIDE) outside += 1;
+    else if (shown < FACE_INSIDE) cut += 1;
+  }
+  const parts = [];
+  if (cut === 1) parts.push("Someone is cut off at the edge.");
+  else if (cut > 1) parts.push(`${cut} people are cut off at the edge.`);
+  if (outside === 1) parts.push("1 person is outside the frame.");
+  else if (outside > 1) parts.push(`${outside} people are outside the frame.`);
+  return parts.join(" ");
+}
