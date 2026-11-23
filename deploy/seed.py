@@ -1,4 +1,4 @@
-"""Stores the app's workflows, engines, recipes and prompts in the database once.
+r"""Stores the app's workflows, engines, recipes and prompts in the database once.
 
 Run after migrate.ps1: .venv\Scripts\python.exe deploy\seed.py
 Running it again changes nothing. New prompt texts arrive as candidates.
