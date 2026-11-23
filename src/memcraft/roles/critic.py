@@ -1,6 +1,7 @@
 """The critic: one look at a made frame (a keyframe, or the last frame of a clip) next to the
-source photos. Pass or fail for face, story and artefacts, a one-line reason each, and one
-correction sentence for the next try.
+source photos. It judges faces only, pass or fail with a one-line reason, and that verdict is
+only a warning: nothing is redrawn and no job fails on it. Its story and artefact checks were
+dropped after E0, where both critics missed 7 of 7 such flaws.
 
 Which critic a job uses is a setting: Gemma (CPU, the default), Qwen 3.8 (GPU, in E0 too
 lenient) or off. The settings row "active_critic_engine" holds the id of a critic engine, or
@@ -37,10 +38,9 @@ from memcraft.versions import pin_step
 
 SETTING = "active_critic_engine"
 CRITICS = (GEMMA, QWEN)
-CHECKS = ("face", "story", "artefacts")
+CHECKS = ("face",)
 MAX_WHY = 160
-MAX_CORRECTION = 200
-MAX_TOKENS = 450
+MAX_TOKENS = 200
 
 
 class CriticError(Exception):
@@ -50,19 +50,14 @@ class CriticError(Exception):
 @dataclass(frozen=True)
 class Verdict:
     face: bool
-    story: bool
-    artefacts: bool
     face_why: str
-    story_why: str
-    artefacts_why: str
-    correction: str
     model: str
     seconds: float
     attempts: int = 1
 
     @property
     def passed(self) -> bool:
-        return self.face and self.story and self.artefacts
+        return self.face
 
     def as_output(self) -> dict[str, Any]:
         output = asdict(self)
@@ -77,11 +72,11 @@ def schema() -> dict[str, Any]:
     for check in CHECKS:
         properties[f"{check}_why"] = why
         properties[check] = verdict
-    properties["correction"] = {"type": "string", "maxLength": MAX_CORRECTION}
     return object_schema(properties)
 
 
-def build(prompt: PromptVersion, photos: int, story: str) -> tuple[str, str]:
+def build(prompt: PromptVersion, photos: int, story: str = "") -> tuple[str, str]:
+    """Older prompt versions still name the story; the current one does not."""
     found = parts(prompt.text, ("system", "user"))
     return fill(found["system"]), fill(found["user"], {"count": photos, "story": story.strip()})
 
@@ -91,7 +86,8 @@ def _one_line(value: Any, limit: int) -> str:
 
 
 def read_verdict(data: Any, model: str, seconds: float, attempts: int = 1) -> Verdict:
-    """A Verdict from the critic's JSON. Anything but a clear "pass" counts as a fail."""
+    """A Verdict from the critic's JSON. Anything but a clear "pass" counts as a fail; other
+    checks an older prompt asked for are ignored."""
     if not isinstance(data, dict):
         raise CriticError("the critic gave no JSON object")
     missing = [check for check in CHECKS if check not in data]
@@ -104,12 +100,9 @@ def read_verdict(data: Any, model: str, seconds: float, attempts: int = 1) -> Ve
             raise CriticError(f"the critic's {check} is {value!r}, not pass or fail")
         return value == "pass"
 
-    verdicts = {check: passed(check) for check in CHECKS}
-    correction = _one_line(data.get("correction"), MAX_CORRECTION)
     return Verdict(
-        **verdicts,
-        **{f"{c}_why": _one_line(data.get(f"{c}_why"), MAX_WHY) for c in CHECKS},
-        correction="" if all(verdicts.values()) else correction,
+        face=passed("face"),
+        face_why=_one_line(data.get("face_why"), MAX_WHY),
         model=model,
         seconds=seconds,
         attempts=attempts,

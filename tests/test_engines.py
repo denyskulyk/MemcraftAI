@@ -331,7 +331,7 @@ def test_an_adapter_refuses_another_workflow():
 def test_multishot_plan():
     short = plan(RULES["multishot"], JobLength.SHORT)
     assert [(r.first, r.first_strength, r.shots, r.max_shots) for r in short.runs] == [
-        (First.PHOTO, 0.7, 1, 2)
+        (First.PHOTO, 0.7, 1, 1)
     ]
     long = plan(RULES["multishot"], JobLength.LONG)
     assert [r.first for r in long.runs] == [First.PHOTO, First.PREVIOUS_LAST_FRAME]

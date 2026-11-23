@@ -87,7 +87,7 @@ function showIdea(job) {
     const mine = idea.proposed_by === "user";
     $("idea-title").textContent = mine ? "Your idea, as the app understood it" : "The app's idea";
     $("idea-text").textContent = idea.text;
-    $("idea-score").textContent = "Fun score: " + idea.score + " / 10";
+    $("idea-score").textContent = "Fun guess: " + idea.score + " / 10";
     $("idea-reason").textContent = idea.understood
       ? "How the app understood it: " + idea.understood + " Weak spot: " + idea.reason
       : idea.reason;

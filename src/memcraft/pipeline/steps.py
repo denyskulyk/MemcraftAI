@@ -12,7 +12,7 @@ the worker's progress reports update those rows from this thread and would wait 
 
 Assets a step makes, by kind and ordinal:
 - gemma_copy n: the small JPEG of photo n (photos.make_gemma_copies)
-- keyframe 0..2: start, middle, end; a redraw the critic preferred has the same ordinal
+- keyframe 0..2: start, middle, end (jobs from before the E0 verdicts may hold a redraw too)
 - keyframe 100 + r: the real last frame of run r, where run r + 1 starts
 - latent 2r, 2r + 1: the stage-1 video and audio latents of run r (the release resumes there)
 - clip r: the 544x960 preview of run r; clip 100: the joined runs of a long video
@@ -71,12 +71,12 @@ from memcraft.photos import list_photos, make_gemma_copies
 from memcraft.pipeline import choices, media
 from memcraft.pipeline.regime import regime_for
 from memcraft.roles.chat import record_idea, run_chat
-from memcraft.roles.critic import Critic, Verdict, pinned_critic
-from memcraft.roles.director import direct_keyframes, direct_multishot, for_ltx
+from memcraft.roles.critic import Critic, pinned_critic
+from memcraft.roles.director import direct_keyframes, direct_multishot, no_music
 from memcraft.roles.qwen import ComfyTextRunner
 from memcraft.roles.seed import GEMMA, QWEN, active_prompt
 from memcraft.storage import FileStore
-from memcraft.worker.steps import StepContext
+from memcraft.worker.steps import StepContext, StepStopped
 
 log = logging.getLogger(__name__)
 
@@ -91,8 +91,6 @@ JOINED_ORDINAL = 100
 KEYFRAME_NAMES = ("start", "middle", "end")
 # The critic sees every picture at the size E0.14 tested.
 CRITIC_SIZE = (540, 960)
-# A redraw after a failed check: a new seed, and the critic's correction added to the prompt.
-REDRAW_SEED_STEP = 7919
 FPS = 30
 
 PNG = "image/png"
@@ -282,7 +280,7 @@ def output_of(ctx: StepContext, step: StepName, ordinal: int = 0) -> Mapping[str
 
 
 def chosen_keyframes(outputs: Mapping[tuple[StepName, int], Any]) -> dict[int, str]:
-    """Asset ids of the keyframes the clips use: the critic's choice where it chose."""
+    """Asset ids of the keyframes the clips use: the critic's choice where an older check chose."""
     chosen = {
         ordinal: output["asset_id"]
         for (step, ordinal), output in outputs.items()
@@ -406,7 +404,8 @@ class ScenarioStep:
 
 @dataclass
 class KeyframeStep:
-    """One keyframe with Qwen-Image; middle and end take the start keyframe as a reference."""
+    """One keyframe with Qwen-Image; middle and end take the start keyframe as a reference
+    when the director chose so (1 or 2 people)."""
 
     deps: Deps
     needs_gpu: bool = True
@@ -453,16 +452,13 @@ class KeyframeStep:
         }
 
 
-def _rank(verdict: Verdict) -> tuple[int, int]:
-    return (sum((verdict.face, verdict.story, verdict.artefacts)), int(verdict.face))
-
-
 @dataclass
 class CheckStep:
-    """The critic looks at pictures only: every keyframe (before LTX loads), or the last frame.
+    """The critic looks at faces only: every keyframe (before LTX loads), or the last frame.
 
-    A keyframe that fails is drawn once more with a new seed and the critic's correction; the
-    better of the two is kept (a tie keeps the first). The last-frame check only records.
+    Its verdict is a warning that is recorded and logged: nothing is redrawn, and the step
+    never fails the job, not even when the critic cannot run (E0: faces were the only check
+    worth keeping).
     """
 
     deps: Deps
@@ -472,118 +468,81 @@ class CheckStep:
 
     def run(self, ctx: StepContext) -> Mapping[str, Any]:
         session, deps = ctx.session, self.deps
+        kind = ctx.inputs.get("kind")
         job = session.get_one(Job, ctx.job_id)
         engine = session.get(EngineVersion, job.critic_engine_id) if job.critic_engine_id else None
         if engine is None:
-            return {"kind": ctx.inputs.get("kind"), "skipped": "the critic is off"}
-        photos = gemma_images(session, deps.store, ctx.job_id)
+            return {"kind": kind, "skipped": "the critic is off"}
         started = time.monotonic()
-        with contextlib.ExitStack() as stack:
-            gemma = run_text = None
-            if engine.name == QWEN:
-                deps.comfy.ensure_up()
-                client = stack.enter_context(deps.comfy.client())
-                run_text = deps.text_runner(client, folder_of(ctx.job_id), lambda: ctx.stopping)
-            else:
-                gemma = stack.enter_context(deps.gemma.client())
-            critic = pinned_critic(session, job, gemma=gemma, run_text=run_text)
-            if critic is None:
-                return {"kind": ctx.inputs.get("kind"), "skipped": "the critic is off"}
-            if ctx.inputs.get("kind") == "keyframes":
-                output = self._keyframes(ctx, job, critic, photos)
-            else:
-                output = self._last_frame(ctx, critic, photos)
+        critic: Critic | None = None
+        try:
+            photos = gemma_images(session, deps.store, ctx.job_id)
+            with contextlib.ExitStack() as stack:
+                gemma = run_text = None
+                if engine.name == QWEN:
+                    deps.comfy.ensure_up()
+                    client = stack.enter_context(deps.comfy.client())
+                    run_text = deps.text_runner(client, folder_of(ctx.job_id), lambda: ctx.stopping)
+                else:
+                    gemma = stack.enter_context(deps.gemma.client())
+                critic = pinned_critic(session, job, gemma=gemma, run_text=run_text)
+                if critic is None:
+                    return {"kind": kind, "skipped": "the critic is off"}
+                if kind == "keyframes":
+                    output = self._keyframes(ctx, critic, photos)
+                else:
+                    output = self._last_frame(ctx, critic, photos)
+        except StepStopped:
+            raise
+        except Exception as error:  # a warning step never fails the job
+            log.warning("job %s: the face check could not run: %s", ctx.job_id, error)
+            output = {"kind": kind, "faces_ok": None, "error": str(error)[:300]}
         output["wall_seconds"] = round(time.monotonic() - started, 1)
-        versions.pin_step(session, _row(ctx), prompt=critic.prompt)
+        if critic is not None:
+            versions.pin_step(session, _row(ctx), prompt=critic.prompt)
         return output
 
-    def _keyframes(
-        self, ctx: StepContext, job: Job, critic: Critic, photos: list[bytes]
+    def _verdict(
+        self, ctx: StepContext, critic: Critic, photos: list[bytes], path: Path, label: str
     ) -> dict[str, Any]:
+        """The face verdict of one picture, logged; a critic that fails is a warning too."""
+        try:
+            verdict = critic.check(photos, critic_jpeg(path), "", seed=1)
+        except StepStopped:
+            raise
+        except Exception as error:  # a warning step never fails the job
+            log.warning("job %s: no face verdict for %s: %s", ctx.job_id, label, error)
+            return {"face": None, "face_why": "", "error": str(error)[:300]}
+        if verdict.face:
+            log.info("job %s: faces of %s pass: %s", ctx.job_id, label, verdict.face_why)
+        else:
+            log.warning("job %s: faces of %s fail: %s", ctx.job_id, label, verdict.face_why)
+        return {
+            "face": verdict.face,
+            "face_why": verdict.face_why,
+            "model": verdict.model,
+            "seconds": verdict.seconds,
+            "attempts": verdict.attempts,
+        }
+
+    def _keyframes(self, ctx: StepContext, critic: Critic, photos: list[bytes]) -> dict[str, Any]:
         session, deps = ctx.session, self.deps
         scenario = output_of(ctx, StepName.SCENARIO)
         drawn = chosen_keyframes(ctx.outputs)
         count = len(scenario["keyframes"])
         entries: list[dict[str, Any]] = []
-        chosen_paths: dict[int, Path] = {}
-        adapter = None
-        with work_folder(deps, ctx) as work:
-            for index, keyframe in enumerate(scenario["keyframes"]):
-                ctx.check_stop()
-                path = asset_path(session, deps.store, drawn[index])
-                story = for_ltx(keyframe["action"])
-                verdict = critic.check(photos, critic_jpeg(path), story, seed=1)
-                entry: dict[str, Any] = {
-                    "ordinal": index,
-                    "asset_id": drawn[index],
-                    "verdict": verdict.as_output(),
-                }
-                ctx.progress((index + 0.5) / count)
-                if not verdict.passed:
-                    if adapter is None:
-                        adapter = deps.adapter(session, job, EngineSlot.KEYFRAME)
-                    retry = self._redraw(ctx, adapter, keyframe, verdict, chosen_paths, work)
-                    again = critic.check(photos, critic_jpeg(retry["path"]), story, seed=2)
-                    retry["verdict"] = again.as_output()
-                    better = _rank(again) > _rank(verdict)
-                    if better:
-                        asset = save_file(deps, ctx, AssetKind.KEYFRAME, retry["path"], PNG, index)
-                        entry["asset_id"] = str(asset.id)
-                        path = deps.store.path_for(asset)
-                    entry["retry"] = {
-                        "seed": retry["seed"],
-                        "correction": verdict.correction,
-                        "verdict": retry["verdict"],
-                        "kept": better,
-                        "seconds": retry["seconds"],
-                    }
-                chosen_paths[index] = path
-                entries.append(entry)
-                ctx.progress((index + 1) / count)
-            if adapter is not None:
-                deps.comfy.clean(folder_of(ctx.job_id))
-        final = [
-            entry["retry"]["verdict"] if entry.get("retry", {}).get("kept") else entry["verdict"]
-            for entry in entries
-        ]
-        return {
-            "kind": "keyframes",
-            "keyframes": entries,
-            "passed": all(verdict["passed"] for verdict in final),
-        }
-
-    def _redraw(
-        self,
-        ctx: StepContext,
-        adapter: Any,
-        keyframe: Mapping[str, Any],
-        verdict: Verdict,
-        chosen: Mapping[int, Path],
-        work: Path,
-    ) -> dict[str, Any]:
-        session, deps = ctx.session, self.deps
-        photos = tuple(deps.store.path_for(photo) for photo in list_photos(session, ctx.job_id))
-        extra = (chosen[0],) if "start" in keyframe["references"] and 0 in chosen else ()
-        prompt = keyframe["prompt"]
-        if verdict.correction:
-            prompt = f"{prompt} {verdict.correction}"
-        seed = int(keyframe["seed"]) + REDRAW_SEED_STEP
-        request = KeyframeRequest(
-            prompt=prompt,
-            photos=photos,
-            seed=seed,
-            extra_references=extra,
-            folder=folder_of(ctx.job_id),
-        )
-        deps.comfy.ensure_up()
-        with deps.comfy.client() as client:
-            result = adapter.render(
-                client,
-                request,
-                work / f"redraw-{keyframe['at']}.png",
-                run_options(ctx, deps.expected["keyframe"], 0.0, 0.0),
-            )
-        return {"path": result.image, "seed": seed, "seconds": round(result.seconds, 1)}
+        for index, keyframe in enumerate(scenario["keyframes"]):
+            ctx.check_stop()
+            path = asset_path(session, deps.store, drawn[index])
+            entry: dict[str, Any] = {
+                "ordinal": index,
+                "at": keyframe["at"],
+                "asset_id": drawn[index],
+            }
+            entry |= self._verdict(ctx, critic, photos, path, f"keyframe {keyframe['at']}")
+            entries.append(entry)
+            ctx.progress((index + 1) / count)
+        return {"kind": "keyframes", "keyframes": entries, "faces_ok": _faces_ok(entries)}
 
     def _last_frame(self, ctx: StepContext, critic: Critic, photos: list[bytes]) -> dict[str, Any]:
         session, deps = ctx.session, self.deps
@@ -591,10 +550,17 @@ class CheckStep:
         last_run = len(scenario["runs"]) - 1
         clip = output_of(ctx, StepName.CLIP, last_run)
         path = asset_path(session, deps.store, clip["last_frame"])
-        story = "The end of this scene: " + scenario["runs"][last_run]["prompt"]
-        verdict = critic.check(photos, critic_jpeg(path), story, seed=1)
+        entry = self._verdict(ctx, critic, photos, path, f"the last frame of run {last_run}")
         ctx.progress(1.0)
-        return {"kind": "last_frame", "run": last_run, "verdict": verdict.as_output()}
+        return {"kind": "last_frame", "run": last_run, **entry, "faces_ok": _faces_ok([entry])}
+
+
+def _faces_ok(entries: Sequence[Mapping[str, Any]]) -> bool | None:
+    """False when any face failed, None when no verdict came back, else True."""
+    faces = [entry.get("face") for entry in entries]
+    if any(face is False for face in faces):
+        return False
+    return None if any(face is None for face in faces) else True
 
 
 @dataclass
@@ -675,7 +641,8 @@ def clip_request(
         first_id = before["last_frame"]
     guides = [[keyframes[index], frame] for index, frame in run_plan.guides]
     described = {
-        "prompt": director_run["prompt"],
+        # Never music, also for a scenario written before the director removed it.
+        "prompt": no_music(director_run["prompt"]),
         "seed": director_run["seed"],
         "frames": director_run["frames"],
         "fps": FPS,

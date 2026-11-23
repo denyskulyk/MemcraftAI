@@ -68,7 +68,8 @@ class RunPlan:
 class Plan:
     regime: JobRegime
     # Names of the keyframes to draw, in order; the first one is drawn before the others and
-    # is an extra reference of each later one.
+    # is an extra reference of each later one when the scene has 1 or 2 people (the director
+    # decides, memcraft.roles.director.CHAINED_PEOPLE).
     keyframes: tuple[str, ...]
     runs: tuple[RunPlan, ...]
 
@@ -84,9 +85,10 @@ class RecipeRules:
     frames_per_run: int = 241
     runs_short: int = 1
     runs_long: int = 2
-    # Multi-shot: single take by default for one photo, 2 shots allowed (E0.2).
+    # Multi-shot: one photo makes a single take only. With 2 shots the faces held in 2 of 4
+    # videos, in a single take in 4 of 5 (E0 verdicts).
     default_shots: int = 1
-    max_shots: int = 2
+    max_shots: int = 1
     # The first run of a multi-shot job starts from the photo at the strength of LTX v8.
     photo_first_strength: float = 0.7
 

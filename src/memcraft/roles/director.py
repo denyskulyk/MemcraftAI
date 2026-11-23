@@ -6,9 +6,15 @@ costs one retry with a new seed. Qwen writes "image1" where the keyframe model n
 "<image1>", so the code rewrites the tags.
 
 Two regimes:
-- multishot: one photo is the first frame; one prompt per LTX run, 1 shot by default, 2 allowed.
+- multishot: one photo is the first frame; one prompt per LTX run, always a single take (with
+  2 shots the faces held in 2 of 4 E0 videos).
 - keyframes: a bible (people, place, light, camera), three keyframe prompts with their frame
-  positions, and one prompt per LTX run between them.
+  positions, and one prompt per LTX run between them. Middle and end take the start keyframe as
+  an extra reference only for 1 or 2 people; with 3 it lost a face, so they come from the
+  photos only.
+
+Never music: every run prompt loses any sentence that mentions music and ends on "No music."
+(no_music()), whatever the prompt text asked for.
 
 A long video is two runs; the second starts from the last frame of the first, so the runs
 share that frame. Frame counts are 8n+1: one run has 153 to 297, a long video 305 to 593.
@@ -33,7 +39,15 @@ type TextRunner = Callable[[str, str, Sequence[bytes], int], str]
 FPS = 30
 FRAME_RANGE = {JobLength.SHORT: (153, 297), JobLength.LONG: (305, 593)}
 DEFAULT_FRAMES = {JobLength.SHORT: 241, JobLength.LONG: 481}
-MAX_SHOTS = 2
+MAX_SHOTS = 1
+# Middle and end keyframes take the start keyframe as a reference up to this many people.
+CHAINED_PEOPLE = 2
+# Said in middle and end keyframes drawn from the photos only, so they match the start.
+SAME_FRAMING = (
+    "Same place, light, camera position and framing as the start of this scene; only the "
+    "action and expressions change."
+)
+NO_MUSIC = "No music."
 MAX_RUN_WORDS = 220
 _SEED_LIMIT = 2**31 - 1
 
@@ -162,6 +176,22 @@ def for_ltx(text: str) -> str:
     text = re.sub(r"\s*\b(?:from|in|of)\s+<?\bimage\s*[1-9]\b>?", "", text, flags=re.I)
     text = _TAG.sub("", text)
     return re.sub(r"\s+([,.;:!?])", r"\1", " ".join(text.split()))
+
+
+_MUSIC = re.compile(r"\b(?:music\w*|soundtracks?|melod\w*)\b", re.I)
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+|(?<=[.!?][\"”])\s+")
+
+
+def no_music(text: str) -> str:
+    """A run prompt without any sentence that mentions music, ending on "No music."."""
+    sentences = [part for part in _SENTENCE_END.split(text.strip()) if part.strip()]
+    kept = [part for part in sentences if not _MUSIC.search(part)]
+    return " ".join([*kept, NO_MUSIC])
+
+
+def run_prompt(text: str) -> str:
+    """The final LTX prompt of a run: no picture tags, no music."""
+    return no_music(for_ltx(text))
 
 
 def name_people(body: str, people: Sequence[dict[str, Any]], count: int) -> tuple[str, list[str]]:
@@ -342,7 +372,7 @@ def direct_multishot(
     clock: Callable[[], float] = time.monotonic,
 ) -> MultishotPlan:
     if not 1 <= shots <= MAX_SHOTS:
-        raise DirectorError(f"a multishot video has 1 to {MAX_SHOTS} shots")
+        raise DirectorError("a multishot video is a single take")
     if not idea.strip():
         raise DirectorError("the director needs the approved idea")
     frames = check_frames(DEFAULT_FRAMES[length] if frames is None else frames, length)
@@ -357,7 +387,8 @@ def direct_multishot(
             "runs": fill(found["runs_two" if two else "runs_one"], {"run_seconds": run_seconds}),
             "labels": fill(found["labels_two" if two else "labels_one"]),
             "shots": shots,
-            "shot_rule": fill(found["shot_rule_many" if shots > 1 else "shot_rule_one"]),
+            # Older prompt versions keep the single-take rule in a part of its own.
+            "shot_rule": fill(found.get("shot_rule_one", "")),
             "words": MAX_RUN_WORDS,
         },
     )
@@ -371,15 +402,13 @@ def direct_multishot(
     for index, (count, start) in enumerate(zip(counts, run_starts(counts), strict=True)):
         text = sections[f"RUN {index + 1}"]
         cuts = _cut_words(text)
-        if shots == 1 and cuts and not re.search(r"\bno cuts?\b", text, re.I):
+        if cuts and not re.search(r"\bno cuts?\b", text, re.I):
             problems.append(f"RUN {index + 1}: {cuts} cut words in a single take")
-        if shots > 1 and cuts < shots - 1:
-            problems.append(f"RUN {index + 1}: only {cuts} cut words for {shots} shots")
         if len(text.split()) > MAX_RUN_WORDS + 40:
             problems.append(f"RUN {index + 1}: {len(text.split())} words")
         runs.append(
             Run(
-                prompt=for_ltx(text),
+                prompt=run_prompt(text),
                 frames=count,
                 seed=seeds[index],
                 start=start,
@@ -467,6 +496,8 @@ def direct_keyframes(
     }
     if len(bible["people"]) != count:
         problems.append(f"PEOPLE lists {len(bible['people'])} people for {count} photos")
+    # With 3 people the start keyframe as a reference lost a face and added noise (E0).
+    chained = (len(bible["people"]) or count) <= CHAINED_PEOPLE
     seeds = render_seeds(seed, 3 + len(counts))
     positions = keyframe_frames(counts)
     tail = fill(found["suffix"])
@@ -476,6 +507,8 @@ def direct_keyframes(
         problems += [f"KEYFRAME {at.upper()}: {note}" for note in notes]
         if at == "start":
             body = f"{bible['camera']} {body}"
+        elif not chained:
+            body = f"{bible['camera']} {SAME_FRAMING} {body}"
         if tail and tail.lower() not in body.lower():
             body = f"{body} {tail}"
         keyframes.append(
@@ -484,7 +517,10 @@ def direct_keyframes(
                 action=body,
                 frame=positions[at],
                 seed=seeds[index],
-                references=[*range(1, count + 1), *(["start"] if at != "start" else [])],
+                references=[
+                    *range(1, count + 1),
+                    *(["start"] if at != "start" and chained else []),
+                ],
             )
         )
     starts = run_starts(counts)
@@ -498,7 +534,7 @@ def direct_keyframes(
         ]
         runs.append(
             Run(
-                prompt=for_ltx(sections[f"RUN {index + 1}"]),
+                prompt=run_prompt(sections[f"RUN {index + 1}"]),
                 frames=run_count,
                 seed=seeds[3 + index],
                 start=starts[index],

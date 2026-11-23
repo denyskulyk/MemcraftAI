@@ -41,16 +41,8 @@ from memcraft.versions import (
     promote,
 )
 
-PASS = {
-    "face_why": "Same round face and beard.",
-    "face": "pass",
-    "story_why": "He floats.",
-    "story": "pass",
-    "artefacts_why": "Clean.",
-    "artefacts": "pass",
-    "correction": "",
-}
-FAIL = PASS | {"face": "fail", "face_why": "Another\nperson.", "correction": "Keep his beard."}
+PASS = {"face_why": "Same round face and beard.", "face": "pass"}
+FAIL = {"face_why": "Another\nperson.", "face": "fail"}
 
 
 def prompt(model="gemma"):
@@ -59,16 +51,15 @@ def prompt(model="gemma"):
     )
 
 
-def test_the_schema_puts_each_reason_before_its_verdict():
-    assert schema()["required"] == [
-        "face_why",
-        "face",
-        "story_why",
-        "story",
-        "artefacts_why",
-        "artefacts",
-        "correction",
-    ]
+def test_the_schema_asks_for_faces_only_reason_first():
+    assert schema()["required"] == ["face_why", "face"]
+
+
+@pytest.mark.parametrize("model", ["gemma", "qwen3.8"])
+def test_the_prompt_judges_faces_only(model):
+    text = read_prompt(PromptRole.CRITIC, model)
+    assert '"face": "pass" or "fail"' in text and "$story" not in text
+    assert "artefacts" not in text and "correction" not in text
 
 
 def test_gemma_sees_photos_then_the_frame():
@@ -76,25 +67,32 @@ def test_gemma_sees_photos_then_the_frame():
     client = GemmaClient("http://127.0.0.1:8098", post=server)
     frame = b"\x89PNG\r\n\x1a\nframe"
     verdict = check_with_gemma(client, prompt(), [JPEG, JPEG], frame, "He floats away.")
-    assert not verdict.passed and not verdict.face and verdict.story
+    assert not verdict.passed and not verdict.face
     assert verdict.face_why == "Another person."
-    assert verdict.correction == "Keep his beard."
     body = server.calls[0][1]
     content = body["messages"][1]["content"]
     assert content[2]["image_url"]["url"].startswith("data:image/png")
-    assert "Source photos: 2." in content[3]["text"] and "He floats away." in content[3]["text"]
+    assert "Source photos: 2." in content[3]["text"] and "He floats" not in content[3]["text"]
     assert body["temperature"] == 0.2
 
 
-def test_all_pass_drops_the_correction():
-    verdict = read_verdict(PASS | {"correction": "something"}, "gemma", 1.0)
-    assert verdict.passed and verdict.correction == ""
-    assert verdict.as_output()["passed"] is True
+def test_checks_an_older_prompt_asked_for_are_ignored():
+    older = PASS | {"story": "fail", "artefacts": "fail", "correction": "Fix the hands."}
+    verdict = read_verdict(older, "gemma", 1.0)
+    assert verdict.passed
+    assert verdict.as_output() == {
+        "face": True,
+        "face_why": "Same round face and beard.",
+        "model": "gemma",
+        "seconds": 1.0,
+        "attempts": 1,
+        "passed": True,
+    }
 
 
 @pytest.mark.parametrize(
     "data",
-    [None, [], {k: v for k, v in PASS.items() if k != "story"}, PASS | {"story": "mostly"}],
+    [None, [], {"face_why": "no verdict"}, PASS | {"face": "mostly"}],
 )
 def test_an_unclear_verdict_is_an_error(data):
     with pytest.raises(CriticError):
@@ -116,7 +114,7 @@ def test_loose_json():
 def test_qwen_retries_once_when_a_check_is_missing():
     import json
 
-    missing = {k: v for k, v in PASS.items() if k != "story"}  # as Qwen did in E0.14
+    missing = {"face_why": "Same face."}  # a check left out, as Qwen did in E0.14
     answers = [json.dumps(missing), "```" + json.dumps(PASS) + "```"]
     seeds = []
 

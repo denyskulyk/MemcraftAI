@@ -3,6 +3,7 @@ import pytest
 from memcraft.models import JobLength, PromptRole, PromptVersion
 from memcraft.roles.director import (
     KEYFRAME_LABELS,
+    SAME_FRAMING,
     DirectorError,
     FrameCountError,
     SectionsMissingError,
@@ -13,6 +14,7 @@ from memcraft.roles.director import (
     image_tags,
     keyframe_frames,
     name_people,
+    no_music,
     parse_sections,
     render_seeds,
     run_starts,
@@ -274,6 +276,7 @@ def test_a_short_keyframe_plan():
     assert plan.title == "The Umbrella Lift" and plan.attempts == 1 and plan.seconds == 60
     assert calls[0]["seed"] == 7 and calls[0]["images"] == [PHOTO]
     assert "8 seconds long, made as one run" in calls[0]["system"]
+    assert "No music." in calls[0]["system"] and "no cranes" in calls[0]["system"]
     assert "RUN 1: the whole video" in calls[0]["system"] and "RUN 2" not in calls[0]["system"]
     assert calls[0]["prompt"] == "Idea: He flies away"
     assert plan.bible["people"] == [
@@ -301,8 +304,9 @@ def test_a_short_keyframe_plan():
     (run,) = plan.runs
     assert (run.frames, run.start, run.first) == (241, 0, "keyframe")
     assert run.keyframes == [("start", 0), ("middle", 120), ("end", 240)]
-    # Picture tags mean nothing to LTX.
+    # Picture tags mean nothing to LTX, and there is never music.
     assert "image" not in run.prompt.lower()
+    assert run.prompt.endswith("Wind howls. No music.")
     assert len({k.seed for k in plan.keyframes} | {run.seed}) == 4
     assert plan.problems == []
     output = plan.as_output()
@@ -325,6 +329,48 @@ def test_a_long_keyframe_plan_with_two_photos():
     assert plan.keyframes[1].prompt(plan.bible).startswith("Same scene as <image3>:")
     assert [p.get("image") for p in plan.bible["people"]] == [1, 2]
     assert plan.problems == []
+
+
+THREE_PEOPLE = KEYFRAMES_TWO.replace(
+    "| <image2>: the bald man", "| <image3>: the girl in red, braids | <image2>: the bald man"
+)
+NO_PEOPLE = KEYFRAMES_TWO.replace(KEYFRAMES_TWO.split("**PEOPLE:** ")[1].split("\n**PLACE")[0], "|")
+
+
+def test_three_people_draw_middle_and_end_from_the_photos_only():
+    # E0: with 3 people the start keyframe as a reference lost a face and added noise.
+    run_text, _ = runner(THREE_PEOPLE)
+    plan = direct_keyframes(run_text, kf_prompt(), [PHOTO] * 3, "Ocean", length=LONG)
+    assert len(plan.bible["people"]) == 3
+    start, middle, end = plan.keyframes
+    assert start.references == [1, 2, 3]
+    assert middle.references == end.references == [1, 2, 3]
+    for keyframe in (middle, end):
+        assert keyframe.action.startswith(
+            f"Static medium shot from the fountain rim. {SAME_FRAMING}"
+        )
+        prompt = keyframe.prompt(plan.bible)
+        assert prompt.startswith("New place, replace every photo background completely:")
+        assert "A tiny rowing boat in a round park fountain." in prompt
+        assert "same place, light, camera position and framing" in prompt.lower()
+        assert "<image4>" not in prompt
+
+
+def test_two_people_keep_the_start_keyframe_as_a_reference():
+    run_text, _ = runner(KEYFRAMES_TWO)
+    plan = direct_keyframes(run_text, kf_prompt(), [PHOTO] * 2, "Ocean", length=LONG)
+    _, middle, end = plan.keyframes
+    assert middle.references == end.references == [1, 2, "start"]
+    assert SAME_FRAMING not in middle.action
+
+
+@pytest.mark.parametrize(("photos", "chained"), [(2, True), (3, False)])
+def test_without_people_in_the_bible_the_photos_count(photos, chained):
+    run_text, _ = runner(NO_PEOPLE)
+    plan = direct_keyframes(run_text, kf_prompt(), [PHOTO] * photos, "Ocean", length=LONG)
+    assert plan.bible["people"] == []
+    assert ("start" in plan.keyframes[1].references) is chained
+    assert ("start" in plan.keyframes[2].references) is chained
 
 
 def test_people_not_named_or_too_many_images_are_problems():
@@ -383,8 +429,9 @@ def test_a_single_take():
     run_text, calls = runner(MULTISHOT_ONE)
     plan = direct_multishot(run_text, ms_prompt(), PHOTO, "Toast flies")
     system = calls[0]["system"]
-    assert "about 8 seconds" in system and "exactly 1 shot(s)" in system
-    assert "One continuous take, no cuts." in system and "hard cut" not in system
+    assert "about 8 seconds" in system and "one continuous take with no cuts" in system
+    assert "hard cut" not in system and "$" not in system
+    assert "No music." in system and "no cranes" in system
     assert "made in one run" in system and "RUN 2" not in system
     assert plan.people == [
         {
@@ -393,27 +440,32 @@ def test_a_single_take():
         }
     ]
     (run,) = plan.runs
-    assert run.frames == 241 and run.start == 0 and run.prompt.endswith("a loud pop.")
+    assert run.frames == 241 and run.start == 0 and run.prompt.endswith("a loud pop. No music.")
     assert '"Fine."' in run.prompt
     assert plan.problems == []
 
 
-def test_two_shots_in_a_long_video_continue_from_the_last_frame():
+def test_a_long_single_take_continues_from_the_last_frame():
     answer = (
         "TITLE: T\nPEOPLE: the man in red: beard\n"
-        "RUN 1: He waits. A hard cut transitions to a close-up of the man in red.\n"
-        "RUN 2: He laughs, no cut at all, and then a cut to the sky.\n"
+        'RUN 1: He waits. Soft piano music plays. He shouts "Now!"\n'
+        "RUN 2: He laughs out loud. No music.\n"
     )
     run_text, calls = runner(answer)
-    plan = direct_multishot(run_text, ms_prompt(), PHOTO, "idea", length=LONG, shots=2, frames=593)
+    plan = direct_multishot(run_text, ms_prompt(), PHOTO, "idea", length=LONG, frames=593)
     system = calls[0]["system"]
-    assert "two runs of about 10 seconds" in system and "hard cut" in system
+    assert "two runs of about 10 seconds" in system and "hard cut" not in system
     assert "RUN 2: the second half, starting from the last frame of RUN 1" in system
     assert [(r.frames, r.start, r.first) for r in plan.runs] == [
         (297, 0, "photo"),
         (297, 296, "previous_last_frame"),
     ]
-    assert plan.problems == []
+    # The music sentence goes, "No music." comes last.
+    assert [r.prompt for r in plan.runs] == [
+        'He waits. He shouts "Now!" No music.',
+        "He laughs out loud. No music.",
+    ]
+    assert plan.shots == 1 and plan.problems == []
 
 
 def test_cut_words_in_a_single_take_are_a_problem():
@@ -425,10 +477,38 @@ def test_cut_words_in_a_single_take_are_a_problem():
 
 def test_multishot_arguments():
     run_text, _ = runner()
-    with pytest.raises(DirectorError):
-        direct_multishot(run_text, ms_prompt(), PHOTO, "idea", shots=3)
+    # One photo makes a single take only (E0: faces held in 4 of 5, with 2 shots in 2 of 4).
+    with pytest.raises(DirectorError, match="single take"):
+        direct_multishot(run_text, ms_prompt(), PHOTO, "idea", shots=2)
     with pytest.raises(FrameCountError):
         direct_multishot(run_text, ms_prompt(), PHOTO, "idea", length=LONG, frames=241)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("He jumps. Upbeat music swells. Glass shatters.", "He jumps. Glass shatters. No music."),
+        ('She yells "Stop!" A musical sting plays.', 'She yells "Stop!" No music.'),
+        ("A soundtrack hums under it all", "No music."),
+        ("Loud crash and laughter.", "Loud crash and laughter. No music."),
+        ("They cheer. No music.", "They cheer. No music."),
+    ],
+)
+def test_run_prompts_never_ask_for_music(text, expected):
+    assert no_music(text) == expected
+    assert no_music(no_music(text)) == expected
+
+
+@pytest.mark.parametrize("role", [PromptRole.DIRECTOR_MULTISHOT, PromptRole.DIRECTOR_KEYFRAMES])
+def test_director_prompts_carry_the_e0_rules(role):
+    text = read_prompt(role, "qwen3.8")
+    # Props LTX draws badly.
+    assert "no cranes (birds or machines)" in text
+    assert "no pigeons or other birds in flight" in text
+    assert "no knives or blades" in text
+    # Loud sound with emotion, never music.
+    assert "loud, clear sound effects" in text and "voices with emotion" in text
+    assert "laughing, shouting" in text and "end every" in text and '"No music."' in text
 
 
 # The Qwen text graph

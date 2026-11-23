@@ -92,3 +92,51 @@ def test_active_prompt_checks_the_parts(session):
     promote(session, broken, VersionStatus.ACTIVE)
     with pytest.raises(PromptError, match="no part"):
         active_prompt(session, PromptRole.CRITIC, "gemma")
+
+
+def promote_script():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "deploy" / "promote_prompts.py"
+    spec = importlib.util.spec_from_file_location("promote_prompts", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_newest_candidate_of_each_prompt_becomes_active(session, monkeypatch):
+    first = seed_prompts(session)
+    real = read_prompt
+
+    def changed(role, model, mark):
+        text = real(role, model)
+        return text if role is not PromptRole.CHAT else text.replace("tired", mark)
+
+    for mark in ("weary", "grumpy"):
+        monkeypatch.setattr(
+            "memcraft.roles.seed.read_prompt", lambda r, m, mark=mark: changed(r, m, mark)
+        )
+        seed_prompts(session)
+    script = promote_script()
+    assert [str(c) for c in script.promote_newest(session, dry_run=True)] == [
+        "chat gemma: candidate v3 -> active (active v1 retires)"
+    ]
+    assert first[0].status is VersionStatus.ACTIVE  # a dry run changes nothing
+
+    (change,) = script.promote_newest(session)
+    assert (change.role, change.model, change.before, change.after) == ("chat", "gemma", 1, 3)
+    chat = get_active(session, PromptVersion, role=PromptRole.CHAT, model="gemma")
+    assert chat.version == 3 and "grumpy" in chat.text
+    assert first[0].status is VersionStatus.RETIRED
+    statuses = dict(
+        session.execute(
+            select(PromptVersion.version, PromptVersion.status).where(
+                PromptVersion.role == PromptRole.CHAT
+            )
+        ).all()
+    )
+    assert statuses[2] is VersionStatus.CANDIDATE  # an older candidate is left alone
+    # Every other prompt stays as it was, and a second run has nothing to do.
+    assert all(row.status is VersionStatus.ACTIVE for row in first[1:])
+    assert script.promote_newest(session) == []

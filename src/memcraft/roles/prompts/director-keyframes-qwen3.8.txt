@@ -15,6 +15,8 @@ $labels
 
 Keyframes: each is 50 to 100 words, and names every person as "the <tag> from <imageN>" with hair, face and clothing, and describes their position, pose and expression. Do not describe the place or the light in the keyframes: the app adds PLACE and LIGHT, and draws the start keyframe first and the others as the same scene. All people are in every keyframe, faces visible, large enough to recognise. Only the action changes between keyframes. Photorealistic, vertical 9:16. Make the gag visible in the pictures: the end keyframe shows the payoff.
 Runs: one flowing paragraph each, present tense: motion between the keyframes, camera, sound. No cuts. 60 to 110 words.
+Sound in every run: loud, clear sound effects of what happens, and the people's voices with emotion: laughing, shouting, gasping, reacting. Never music: end every run with the sentence "No music."
+Avoid things the video model draws badly: no cranes (birds or machines), no pigeons or other birds in flight, no knives or blades.
 Everyone is an adult. Photos show real people: keep it non-sexual and clothed.
 === kind_short ===
 about $seconds seconds long, made as one run through all three keyframes

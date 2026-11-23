@@ -108,20 +108,11 @@ class FakeGemma:
 
 
 def passing():
-    return verdict(True, True, True)
+    return verdict(True)
 
 
-def verdict(face, story, artefacts, correction="Keep his beard."):
-    word = {True: "pass", False: "fail"}
-    return {
-        "face_why": "ok",
-        "face": word[face],
-        "story_why": "ok",
-        "story": word[story],
-        "artefacts_why": "ok",
-        "artefacts": word[artefacts],
-        "correction": correction,
-    }
+def verdict(face, why="ok"):
+    return {"face_why": why, "face": "pass" if face else "fail"}
 
 
 SECTIONS = """TITLE: The test
@@ -144,7 +135,10 @@ class FakeDirector:
     def __call__(self, client, folder, should_cancel):
         def run(system, user, images, seed):
             self.calls += 1
-            return SECTIONS
+            # The bible lists one person per photo.
+            head, people, tail = SECTIONS.partition(SECTIONS.splitlines()[1])
+            listed = " | ".join(people.removeprefix("PEOPLE: ").split(" | ")[: len(images)])
+            return f"{head}PEOPLE: {listed}{tail}"
 
         return run
 
@@ -458,6 +452,7 @@ def test_short_one_photo_without_idea_to_release(engine, session, store, fakes):
     assert row.regime is JobRegime.MULTISHOT and row.recipe_id and row.critic_engine_id
     (request,) = fakes.adapters.clips
     assert request.frames == 241 and request.first_strength == 0.7 and request.guides == ()
+    assert request.prompt.endswith("Single take, no cuts. No music.")
     assert request.folder == folder_of(job.id)
     (preview,) = assets(session, job, AssetKind.PREVIEW)
     assert preview.store is AssetStore.SHARED
@@ -500,8 +495,20 @@ def test_short_two_photos_with_idea(engine, session, store, fakes):
     assert [g.image for g in clip.guides] == [by_ordinal[1], by_ordinal[2]]
     assert by_ordinal[100]  # the last frame of run 0
     check = output(session, job, StepName.CHECK)
-    assert check["kind"] == "keyframes" and check["passed"]
+    assert check["kind"] == "keyframes" and check["faces_ok"] is True
+    assert [entry["face"] for entry in check["keyframes"]] == [True, True, True]
     assert fakes.gemma.calls.count("critic") == 3
+
+
+def test_three_people_draw_middle_and_end_from_the_photos(engine, session, store, fakes):
+    job = new_job(session, store, photos=3, idea="three friends and a kite")
+    worker(engine, fakes, store).drain()
+    assert status_of(session, job) is S.PREVIEW_READY
+    start, middle, end = fakes.adapters.keyframes
+    assert [len(k.photos) for k in (start, middle, end)] == [3, 3, 3]
+    assert start.extra_references == middle.extra_references == end.extra_references == ()
+    assert middle.prompt.startswith("New place, replace every photo background completely")
+    assert "same place, light, camera position and framing" in middle.prompt.lower()
 
 
 def test_long_one_photo_joins_two_runs(engine, session, store, fakes):
@@ -530,33 +537,41 @@ def test_long_one_photo_joins_two_runs(engine, session, store, fakes):
 # The critic.
 
 
-def test_a_failed_keyframe_is_drawn_again_and_the_better_kept(engine, session, store, fakes):
+def test_a_failed_face_is_only_a_warning(engine, session, store, fakes, caplog):
     fakes.gemma.verdicts = [
-        verdict(False, True, True, "Give him his beard."),  # start fails
-        passing(),  # its redraw passes
+        verdict(False, "The man lost his beard."),  # start
         passing(),  # middle
-        verdict(False, True, True),  # end fails
-        verdict(False, True, True),  # its redraw is no better: the first stays
+        verdict(False, "The woman is someone else."),  # end
     ]
     job = new_job(session, store, photos=2, idea="rowing")
-    worker(engine, fakes, store).drain()
+    with caplog.at_level("WARNING", logger="memcraft.pipeline.steps"):
+        worker(engine, fakes, store).drain()
     assert status_of(session, job) is S.PREVIEW_READY
-    draws = fakes.adapters.keyframes
-    assert len(draws) == 5
-    redraw_start, redraw_end = draws[3], draws[4]
-    assert redraw_start.prompt.endswith("Give him his beard.")
-    assert redraw_start.seed == draws[0].seed + 7919
+    # Nothing is drawn again, and the clip uses the keyframes as drawn.
+    assert len(fakes.adapters.keyframes) == 3
+    assert fakes.gemma.calls.count("critic") == 3
     check = output(session, job, StepName.CHECK)
     start, middle, end = check["keyframes"]
-    assert start["retry"]["kept"] and not end["retry"]["kept"] and "retry" not in middle
-    kept = session.get(Asset, uuid.UUID(start["asset_id"]))
-    assert kept.ordinal == 0 and str(kept.id) != output(session, job, StepName.KEYFRAME)["asset_id"]
+    assert (start["face"], start["face_why"]) == (False, "The man lost his beard.")
+    assert middle["face"] is True and end["face"] is False
+    assert "retry" not in start and "story" not in start and "artefacts" not in start
+    assert check["faces_ok"] is False
+    assert start["asset_id"] == output(session, job, StepName.KEYFRAME)["asset_id"]
     (clip,) = fakes.adapters.clips
+    kept = session.get(Asset, uuid.UUID(start["asset_id"]))
     assert clip.first_frame == store.path_for(kept)
-    # The end redraw uses the chosen start as its reference.
-    assert redraw_end.extra_references == (store.path_for(kept),)
-    assert check["passed"] is False
-    assert len([a for a in assets(session, job, AssetKind.KEYFRAME) if a.ordinal < 100]) == 4
+    assert len([a for a in assets(session, job, AssetKind.KEYFRAME) if a.ordinal < 100]) == 3
+    assert "The man lost his beard." in caplog.text
+
+
+def test_a_critic_that_cannot_answer_never_blocks_the_job(engine, session, store, fakes):
+    fakes.gemma.verdicts = [{"face_why": "unsure", "face": "maybe"}]
+    job = new_job(session, store)
+    worker(engine, fakes, store).drain()
+    assert status_of(session, job) is S.PREVIEW_READY
+    check = output(session, job, StepName.CHECK)
+    assert check["kind"] == "last_frame" and check["face"] is None and check["faces_ok"] is None
+    assert check["error"]
 
 
 # Checkpoints.

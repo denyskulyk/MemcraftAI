@@ -60,8 +60,6 @@ FILES: tuple[PromptFile, ...] = (
                 "runs_two",
                 "labels_one",
                 "labels_two",
-                "shot_rule_one",
-                "shot_rule_many",
                 "user",
             }
         ),

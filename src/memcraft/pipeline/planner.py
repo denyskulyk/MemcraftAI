@@ -4,7 +4,8 @@
   render_queued, without one it waits in awaiting_approval.
 - render lane, render phase (render_queued, rendering): SCENARIO, then for keyframes
   KEYFRAME 0..2 and CHECK of the keyframes (before LTX loads), CLIP per run, for multi-shot a
-  CHECK of the last frame (it only records), and JOIN when there are two runs or more. The job
+  CHECK of the last frame, and JOIN when there are two runs or more. A CHECK judges faces only
+  and only warns: it never redraws or holds the job. The job
   becomes preview_ready, and the PREVIEW asset is saved in the same transaction (outcome()).
 - render lane, release phase (release_queued, releasing): RELEASE -> released.
 
