@@ -279,6 +279,21 @@ function finished(job) {
   byId("done").hidden = false;
   for (const photo of photos) URL.revokeObjectURL(photo.url);
   byId("done").scrollIntoView();
+  showToast(job.id, text);
+}
+
+// A short toast, then the job page opens by itself; tapping the toast opens it at once.
+const TOAST_SECONDS = 3;
+
+function showToast(id, text) {
+  const page = "/job.html?id=" + encodeURIComponent(id);
+  const toast = document.createElement("a");
+  toast.className = "toast";
+  toast.href = page;
+  toast.setAttribute("role", "status");
+  toast.textContent = "Your video is on its way. " + text + " Opening it now…";
+  document.body.append(toast);
+  setTimeout(() => location.assign(page), TOAST_SECONDS * 1000);
 }
 
 async function start() {
