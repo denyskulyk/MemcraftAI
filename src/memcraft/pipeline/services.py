@@ -350,6 +350,65 @@ class GemmaServer:
             _kill(pid)
 
 
+LLAMA_SWAP_URL = "http://127.0.0.1:8080"
+LLAMA_SWAP_MODEL = "memcraft-gemma"
+LLAMA_SWAP_KEY_FILE = Path(r"C:\Source\LocalAI\secrets\llama-swap-api-key.txt")
+
+
+class SwapGemma:
+    """Gemma as the `memcraft-gemma` model of llama-swap, CPU only (E1.6).
+
+    llama-swap starts it on the first request and unloads it after its own idle time, in a
+    group of its own, so GPU models loading or unloading leave it alone. The API key is read
+    from the file llama-swap's launcher uses; set MEMCRAFT_LLAMA_SWAP_KEY_FILE to move it.
+    """
+
+    def __init__(
+        self,
+        url: str = LLAMA_SWAP_URL,
+        model: str = LLAMA_SWAP_MODEL,
+        key_file: Path | None = None,
+    ) -> None:
+        self.url = url.rstrip("/")
+        self.model = model
+        self.key_file = Path(
+            key_file or os.environ.get("MEMCRAFT_LLAMA_SWAP_KEY_FILE") or LLAMA_SWAP_KEY_FILE
+        )
+
+    def _key(self) -> str | None:
+        try:
+            return self.key_file.read_text(encoding="utf-8").splitlines()[0].strip() or None
+        except (OSError, IndexError):
+            log.warning("no llama-swap API key in %s", self.key_file)
+            return None
+
+    @contextlib.contextmanager
+    def client(self, timeout: float = 600.0) -> Iterator[GemmaClient]:
+        yield GemmaClient(self.url, model=self.model, api_key=self._key(), timeout=timeout)
+
+    def ensure_up(self) -> None:
+        """Nothing to do: llama-swap loads the model on the first request."""
+
+    def stop(self) -> None:
+        """Unload only this model; other llama-swap models stay as they are."""
+        key = self._key()
+        headers = {"Authorization": f"Bearer {key}"} if key else {}
+        try:
+            httpx.post(f"{self.url}/api/models/unload/{self.model}", headers=headers, timeout=30)
+        except httpx.HTTPError as error:
+            log.warning("unloading %s in llama-swap failed: %s", self.model, error)
+
+    def restart(self) -> None:
+        self.stop()
+
+    def run_idle_stopper(self, stop: threading.Event, every: float = 15.0) -> None:
+        """llama-swap unloads the model after its ttl, so there is nothing to do."""
+
+    @property
+    def running(self) -> bool:
+        return False
+
+
 def stop_all(*stoppers: Callable[[], None]) -> None:
     for stop in stoppers:
         try:

@@ -47,6 +47,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-schedule", action="store_true", help="skip expiry and purges")
     parser.add_argument("--no-pins-check", action="store_true", help="skip the pins check")
     parser.add_argument("--gemma-idle-minutes", type=float, default=5.0)
+    parser.add_argument(
+        "--gemma",
+        choices=("swap", "own"),
+        default="swap",
+        help="swap: the memcraft-gemma model of llama-swap; own: a llama-server on 8098",
+    )
     parser.add_argument("--stop-file", type=Path, default=PROJECT / "data" / "worker.stop")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(threadName)s %(message)s")
@@ -88,7 +94,7 @@ def _dry(engine: Engine, args: argparse.Namespace, settings: object) -> int:
 
 def _real(engine: Engine, args: argparse.Namespace, settings: object) -> int:
     from memcraft.pipeline import build_registry
-    from memcraft.pipeline.services import ComfyServer, GemmaServer, stop_all
+    from memcraft.pipeline.services import ComfyServer, GemmaServer, SwapGemma, stop_all
     from memcraft.pipeline.steps import Deps
     from memcraft.worker.watchdog import Watchdog, comfy_service, llama_server_service
 
@@ -100,7 +106,9 @@ def _real(engine: Engine, args: argparse.Namespace, settings: object) -> int:
     store = FileStore(shared, Path(private))
     log.info("database %s", _database_name(engine))
     comfy = ComfyServer()
-    gemma = GemmaServer(idle_minutes=args.gemma_idle_minutes)
+    gemma: GemmaServer | SwapGemma = (
+        SwapGemma() if args.gemma == "swap" else GemmaServer(idle_minutes=args.gemma_idle_minutes)
+    )
     deps = Deps(
         store=store,
         comfy=comfy,
@@ -117,10 +125,11 @@ def _real(engine: Engine, args: argparse.Namespace, settings: object) -> int:
     # A server that a step starts (ComfyUI up to 5 min, Gemma about 20 s from the RAM cache,
     # longer from disk) does not answer meanwhile, so the answer limit covers a start.
     watchdog = Watchdog(
-        [
-            comfy_service(comfy.restart, comfy.base_url),
-            llama_server_service(gemma.restart, gemma.url),
-        ],
+        [comfy_service(comfy.restart, comfy.base_url)]
+        # llama-swap looks after its own servers; the app restarts only its own llama-server.
+        + (
+            [] if isinstance(gemma, SwapGemma) else [llama_server_service(gemma.restart, gemma.url)]
+        ),
         answer_limit=ANSWER_LIMIT,
     )
     schedule = None if args.no_schedule else Schedule(engine, default_tasks(store))

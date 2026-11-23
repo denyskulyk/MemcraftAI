@@ -8,6 +8,7 @@ reuses its cached prefix when the next call has the same system prompt.
 from __future__ import annotations
 
 import base64
+import functools
 import json
 import time
 import urllib.error
@@ -54,13 +55,18 @@ def data_url(image: bytes | str) -> str:
     raise ValueError("only JPEG and PNG images can go to Gemma")
 
 
-def _urllib_post(url: str, body: Mapping[str, Any], timeout: float) -> dict[str, Any]:
+def _urllib_post(
+    url: str, body: Mapping[str, Any], timeout: float, api_key: str | None = None
+) -> dict[str, Any]:
     if not url.startswith(("http://", "https://")):
         raise GemmaError("the Gemma URL must be http or https")
     request = urllib.request.Request(  # noqa: S310 - the scheme is checked above
         url,
         data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            **({"Authorization": f"Bearer {api_key}"} if api_key else {}),
+        },
         method="POST",
     )
     try:
@@ -87,13 +93,16 @@ class GemmaClient:
         base_url: str,
         *,
         model: str | None = None,
+        api_key: str | None = None,
         timeout: float = DEFAULT_TIMEOUT,
         post: Post | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/").removesuffix("/v1")
         self.model = model
         self.timeout = timeout
-        self._post = post or _urllib_post
+        if post is None:
+            post = functools.partial(_urllib_post, api_key=api_key)
+        self._post = post
 
     def ask(
         self,
