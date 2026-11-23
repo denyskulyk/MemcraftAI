@@ -2,6 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +20,11 @@ class Settings(BaseSettings):
     # The address people open, such as https://pc.tailnet.ts.net. Passkeys are bound to its
     # host name, so changing it means enrolling the admin passkey again.
     public_origin: str = "http://localhost:8000"
+
+    @field_validator("private_dir", mode="before")
+    @classmethod
+    def _empty_is_none(cls, value: object) -> object:
+        return None if value == "" else value
 
     @property
     def passkey_rp_id(self) -> str:

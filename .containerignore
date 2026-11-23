@@ -1,0 +1,9 @@
+.venv
+.git
+.env
+data
+backups
+e0-spike
+tests
+**/__pycache__
+**/*.egg-info

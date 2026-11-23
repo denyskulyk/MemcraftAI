@@ -1,0 +1,18 @@
+# The web app only: pages, API, uploads. The worker, ComfyUI and Gemma run on Windows.
+FROM docker.io/library/python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
+    MEMCRAFT_SHARED_DIR=/data/shared
+WORKDIR /app
+RUN useradd --create-home --uid 1000 memcraft
+
+COPY pyproject.toml README.md ./
+COPY src ./src
+# Editable, so the app finds /app/frontend next to /app/src.
+RUN pip install -e .
+COPY frontend ./frontend
+
+USER memcraft
+EXPOSE 8000
+# Host networking: 127.0.0.1 here is the machine's, so only Tailscale Serve on this PC reaches it.
+CMD ["uvicorn", "memcraft.web.app:app", "--host", "127.0.0.1", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "127.0.0.1"]
