@@ -1,0 +1,303 @@
+{
+  "1": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 768
+    }
+  },
+  "2": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 1344
+    }
+  },
+  "3": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "4": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "3",
+        0
+      ],
+      "device": "auto",
+      "dtype": "default"
+    }
+  },
+  "5": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "6": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "7": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "8": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "7",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": [
+        "1",
+        0
+      ],
+      "height": [
+        "2",
+        0
+      ],
+      "crop": "center"
+    }
+  },
+  "9": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "10": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "9",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": [
+        "1",
+        0
+      ],
+      "height": [
+        "2",
+        0
+      ],
+      "crop": "center"
+    }
+  },
+  "11": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    }
+  },
+  "12": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "11",
+        0
+      ],
+      "on_true": [
+        "10",
+        0
+      ]
+    }
+  },
+  "13": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "14": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "13",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": [
+        "1",
+        0
+      ],
+      "height": [
+        "2",
+        0
+      ],
+      "crop": "center"
+    }
+  },
+  "15": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    }
+  },
+  "16": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "15",
+        0
+      ],
+      "on_true": [
+        "14",
+        0
+      ]
+    }
+  },
+  "17": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "18": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "17",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": [
+        "1",
+        0
+      ],
+      "height": [
+        "2",
+        0
+      ],
+      "crop": "center"
+    }
+  },
+  "19": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    }
+  },
+  "20": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "19",
+        0
+      ],
+      "on_true": [
+        "18",
+        0
+      ]
+    }
+  },
+  "21": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": "placeholder"
+    }
+  },
+  "22": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": ""
+    }
+  },
+  "23": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": [
+        "5",
+        0
+      ],
+      "vae": [
+        "6",
+        0
+      ],
+      "prompt": [
+        "21",
+        0
+      ],
+      "negative_prompt": [
+        "22",
+        0
+      ],
+      "resolution": 0,
+      "images.image_1": [
+        "8",
+        0
+      ],
+      "images.image_2": [
+        "12",
+        0
+      ],
+      "images.image_3": [
+        "16",
+        0
+      ],
+      "images.image_4": [
+        "20",
+        0
+      ]
+    }
+  },
+  "24": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "23",
+        0
+      ],
+      "negative": [
+        "23",
+        1
+      ],
+      "latent_image": [
+        "23",
+        2
+      ],
+      "seed": 0,
+      "steps": 16,
+      "cfg": 3.0,
+      "sampler_name": "dpm_2",
+      "scheduler": "normal",
+      "denoise": 1.0
+    }
+  },
+  "25": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "24",
+        0
+      ],
+      "vae": [
+        "6",
+        0
+      ]
+    }
+  },
+  "26": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "25",
+        0
+      ],
+      "filename_prefix": "memcraft/keyframe"
+    }
+  }
+}

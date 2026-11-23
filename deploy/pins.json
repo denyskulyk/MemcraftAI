@@ -1,0 +1,111 @@
+{
+  "format": 1,
+  "comfyui": {
+    "version": "0.46.2",
+    "git": "10cdd12609eb17e8a90f2a2dd811b1c82f6107e7"
+  },
+  "custom_nodes": {
+    "anima-sweep-nodes": {
+      "version": null,
+      "git": null,
+      "files_sha256": "129dc72aee3f0fc05c7d2a0b710ac01afac847f68ded4b65c063f2890bf3edc6"
+    },
+    "ComfyMath": {
+      "version": "0.1.0",
+      "git": "c01177221c31b8e5fbc062778fc8254aeb541638",
+      "files_sha256": "f98b28a12bc0122a8e22f8bd24bfc2f681c8a0f022aeff86735c6820e875c2d7"
+    },
+    "comfyui-custom-scripts": {
+      "version": "1.2.5",
+      "git": null,
+      "files_sha256": "f9eb9f6b0d4702a8fe0403fde7d1d409fe19f884f36e05d436d163f5d33cfb4e"
+    },
+    "comfyui-image-saver": {
+      "version": "1.27.1",
+      "git": null,
+      "files_sha256": "510438c8f47e5a6e491320a967891cb62772b26fc18cd6e03f21b2207fc1833e"
+    },
+    "comfyui-impact-pack": {
+      "version": "8.30",
+      "git": null,
+      "files_sha256": "606389ad827bdaf9f29c41c3994bed4a61f210a1d8bc5332d3d9b4fe1f3f5174"
+    },
+    "comfyui-impact-subpack": {
+      "version": "1.3.5",
+      "git": null,
+      "files_sha256": "d92f8196b5e29906378c6f1b885ee3f633b6db652e902c69625d9653ed1f838b"
+    },
+    "comfyui-inspire-pack": {
+      "version": "1.23",
+      "git": null,
+      "files_sha256": "3bcf75828344ec15ad43d30281ea6db765afa7edcfa096d65b15d81d5aa6bdf7"
+    },
+    "comfyui-kjnodes": {
+      "version": "1.5.4",
+      "git": null,
+      "files_sha256": "2c7bcd539ac4acbb1c212befe1c40d2ce4bd31da09426adc8748cbdd483f9aa2"
+    },
+    "ComfyUI_Nvidia_VFX_Nodes": {
+      "version": "0.2.1",
+      "git": null,
+      "files_sha256": "be471d69820a8b31932c1ff7e9ce632cb7cb0eaa787955fac62dee438eaeb196"
+    },
+    "comfyui_ultimatesdupscale": {
+      "version": "1.7.2",
+      "git": null,
+      "files_sha256": "ff93ca4f3010bb48e8c38bda480e87477cb19035ce96a2a9fba201e9e151bc24"
+    },
+    "llama-swap-chat": {
+      "version": null,
+      "git": null,
+      "files_sha256": "c4b8d6f656a42fbbbc11afb5b3eea77d1dd18d147e28166dcc4b2f2a1bb77697"
+    },
+    "rgthree-comfy": {
+      "version": "1.0.2610300006",
+      "git": null,
+      "files_sha256": "5f9d0b516f2120b2d3f04be5a5f4940e76ed1c745c27581947f7015a137667f0"
+    }
+  },
+  "models": {
+    "gemma4-12b-heretic-ltx-2.5-comfy-int8-convrot.safetensors": {
+      "folder": "text_encoders",
+      "size": 13167724346,
+      "sha256": "5da6d41ccfba4a706cc3a422521cdfcf9f6907772e631777ea0348be1932a2e7"
+    },
+    "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors": {
+      "folder": "diffusion_models",
+      "size": 21504034224,
+      "sha256": "c4279eeff115cbeaca494bd2183e7d768c38fe85a184dc6afbb7159157c44334"
+    },
+    "ltx-2.5-audio-vae-bf16.safetensors": {
+      "folder": "vae",
+      "size": 364866540,
+      "sha256": "c52733d37f6a7fb7949c3dc0fb468c6cb2169e4d836983a73babb9f0d54837a5"
+    },
+    "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors": {
+      "folder": "latent_upscale_models",
+      "size": 995778752,
+      "sha256": "eb5a71fe4068ee87ccdb1c3aa635e547ca76bd2d30ae20ae889f2c325c0677e8"
+    },
+    "ltx-2.5-video-vae-bf16.safetensors": {
+      "folder": "vae",
+      "size": 1472223346,
+      "sha256": "847e14ca7f3355debca0cea4eaa24ac0fbcdf0061da054ac89ca638a869ddba3"
+    },
+    "qwen3vl_8b_int8_convrot.safetensors": {
+      "folder": "text_encoders",
+      "size": 9350798360,
+      "sha256": "8bfd0f6e12abf2d2d697ecc888e5e90b0d6741d6708f05799f53afa560452e8f"
+    },
+    "qwen_image_2.1_int8_convrot.safetensors": {
+      "folder": "diffusion_models",
+      "size": 7256783064,
+      "sha256": "cb74113cb03faecd79611b01fd7fd642f0aa60d6f0b95086abee214d75eaa57d"
+    },
+    "qwen_image_2.1_vae_bf16.safetensors": {
+      "folder": "vae",
+      "size": 675509688,
+      "sha256": "bb21f7473051e1ac368515dd3f2e15cd44d7a11748ee8823e1ddca3e4876b7c9"
+    }
+  }
+}

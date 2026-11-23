@@ -1,0 +1,165 @@
+{
+  "format": 1,
+  "name": "keyframe-qwen-image-2.1",
+  "version": 1,
+  "source": "Qwen-Image-2.1 keyframe from 1 to 4 references cropped to the canvas; the size of the picture is the size of image_1 (e0-spike/flows.py qwen_image)",
+  "inputs": {
+    "image_1": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "7",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "required": true
+    },
+    "image_2": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "9",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "toggle": {
+        "node": "11",
+        "class_type": "PrimitiveBoolean",
+        "input": "value"
+      },
+      "fallback": "image_1"
+    },
+    "image_3": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "13",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "toggle": {
+        "node": "15",
+        "class_type": "PrimitiveBoolean",
+        "input": "value"
+      },
+      "fallback": "image_1"
+    },
+    "image_4": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "17",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "toggle": {
+        "node": "19",
+        "class_type": "PrimitiveBoolean",
+        "input": "value"
+      },
+      "fallback": "image_1"
+    },
+    "prompt": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "21",
+          "class_type": "PrimitiveStringMultiline",
+          "input": "value"
+        }
+      ],
+      "required": true
+    },
+    "negative_prompt": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "22",
+          "class_type": "PrimitiveStringMultiline",
+          "input": "value"
+        }
+      ]
+    },
+    "seed": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "24",
+          "class_type": "KSampler",
+          "input": "seed"
+        }
+      ],
+      "required": true,
+      "min": 0,
+      "max": 18446744073709551615
+    },
+    "steps": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "24",
+          "class_type": "KSampler",
+          "input": "steps"
+        }
+      ],
+      "min": 1,
+      "max": 100
+    },
+    "cfg": {
+      "type": "float",
+      "targets": [
+        {
+          "node": "24",
+          "class_type": "KSampler",
+          "input": "cfg"
+        }
+      ],
+      "min": 0,
+      "max": 20
+    },
+    "width": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "1",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 256,
+      "max": 2048
+    },
+    "height": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "2",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 256,
+      "max": 2048
+    },
+    "prefix": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "26",
+          "class_type": "SaveImage",
+          "input": "filename_prefix"
+        }
+      ]
+    }
+  },
+  "outputs": {
+    "image": {
+      "node": "26",
+      "class_type": "SaveImage"
+    }
+  }
+}

@@ -22,7 +22,14 @@ FOLDERS = sorted(path for path in WORKFLOWS.iterdir() if path.is_dir())
 REQUIRED = {
     "video-ltx2_5-v8": {"first_frame": "a.png", "positive_prompt": "a cat", "seed": 7},
     "qwen2.1-with-lora-v7": {"image_1": "a.png", "positive_prompt": "a cat", "seed": 7},
+    "qwen3.8-director": {"system": "s", "prompt": "p", "image_1": "a.png"},
+    "keyframe-qwen-image-2.1-v1": {"image_1": "a.png", "prompt": "a cat", "seed": 7},
+    "clip-ltx-2.5-v1": {"first_frame": "a.png", "prompt": "a cat", "seed": 7},
 }
+# The two graphs converted from UI files; the other folders have tests of their own.
+EXPORTS = [
+    folder for folder in FOLDERS if folder.name in ("video-ltx2_5-v8", "qwen2.1-with-lora-v7")
+]
 
 
 def api():
@@ -236,7 +243,7 @@ def test_both_exports_are_here():
     assert {folder.name for folder in FOLDERS} == set(REQUIRED)
 
 
-@pytest.mark.parametrize("folder", FOLDERS, ids=lambda folder: folder.name)
+@pytest.mark.parametrize("folder", EXPORTS, ids=lambda folder: folder.name)
 def test_exported_workflow(folder):
     package = load_workflow(folder)
     before = copy.deepcopy(package.api_json)
