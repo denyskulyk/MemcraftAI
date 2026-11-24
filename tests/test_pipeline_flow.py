@@ -750,3 +750,60 @@ def test_the_inventory_checks_held_objects_with_sam(engine, session, store, fake
         "PROP PICTURES: 'a blue cup' is not held in <image2>; from its words"
         in scenario["problems"]
     )
+
+
+class FakeLlama:
+    """The director on its own llama-server: the same answers as FakeDirector, and a log of
+    when the server would start and stop around ComfyUI's SAM checks."""
+
+    def __init__(self, director, adapters):
+        self.events = []
+        self.running = False
+        self.run = director(None, "", lambda: False)
+        adapters_detect = adapters.render
+
+        def render(*args, **kwargs):
+            request = args[1]
+            if getattr(request, "detect", ""):
+                assert not self.running, "SAM ran while the director held the GPU"
+                self.events.append("sam")
+            return adapters_detect(*args, **kwargs)
+
+        adapters.render = render
+
+    def release(self):
+        if self.running:
+            self.events.append("stop")
+            self.running = False
+
+    @contextlib.contextmanager
+    def session(self):
+        def runner(system, user, images, seed):
+            if not self.running:
+                self.events.append("start")
+                self.running = True
+            return self.run(system, user, images, seed)
+
+        try:
+            yield runner
+        finally:
+            self.events.append("end")
+            self.running = False
+
+
+@pytest.mark.compose
+def test_the_llama_director_gives_the_gpu_back_for_sam(engine, session, store, fakes):
+    fakes.director.inventory = (
+        "<image1>: a man | holds: a knife\n<image2>: a woman | holds: nothing\n"
+    )
+    fakes.adapters.objects = {"knife"}
+    fakes.director.extra = "PROPS: a small knife\nPROP PICTURES: a small knife from <image1>\n"
+    llama = FakeLlama(fakes.director, fakes.adapters)
+    fakes.deps.director = llama
+    job = new_job(session, store, photos=2, idea="he cuts the cake")
+    worker(engine, fakes, store).drain()
+    assert status_of(session, job) is S.PREVIEW_READY
+    # Inventory, SAM on the knife, the director, SAM on its words, then the step ends.
+    assert llama.events == ["start", "stop", "sam", "start", "stop", "sam", "end"]
+    scenario = output(session, job, StepName.SCENARIO)
+    assert scenario["inventory"][0]["checked"] == {"knife": True}

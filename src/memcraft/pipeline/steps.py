@@ -167,6 +167,9 @@ class Deps:
     recipe_adapter: RecipeAdapterFor = recipe_adapter
     text_runner: TextRunnerFor = _text_runner
     join: Joiner = _join
+    # The director on its own llama-server (memcraft.pipeline.services.LlamaDirector), or None
+    # for Qwen 3.8 inside ComfyUI. The critic keeps text_runner.
+    director: Any = None
     # Seconds a ComfyUI run is expected to take, for the progress it reports while it waits.
     expected: dict[str, float] = field(
         default_factory=lambda: {"director": 150.0, "keyframe": 60.0, "clip": 120.0}
@@ -292,6 +295,21 @@ class _Reporting:
         return getattr(self._client, name)
 
 
+def _progressing(run_text: Any, ctx: StepContext) -> Any:
+    """A TextRunner that moves the step's progress after each answer, so the watchdog sees the
+    llama-server director working."""
+    calls = [0]
+
+    def run(system: str, user: str, images: Sequence[bytes], seed: int) -> str:
+        ctx.check_stop()
+        answer = run_text(system, user, images, seed)
+        calls[0] += 1
+        ctx.progress(min(0.9, 0.05 + 0.3 * calls[0]))
+        return answer
+
+    return run
+
+
 def run_options(ctx: StepContext, expected: float, start: float, end: float) -> RunOptions:
     return RunOptions(
         on_progress=comfy_progress(ctx, expected, start, end),
@@ -402,9 +420,13 @@ class ScenarioStep:
         ctx.progress(0.02)
         deps.comfy.ensure_up()
         started = time.monotonic()
-        with deps.comfy.client() as client:
-            reporting = _Reporting(client, comfy_progress(ctx, deps.expected["director"]))
-            runner = deps.text_runner(reporting, folder, lambda: ctx.stopping)
+        session_of = deps.director.session if deps.director is not None else contextlib.nullcontext
+        with session_of() as llama, deps.comfy.client() as client:
+            if llama is not None:
+                runner = _progressing(llama, ctx)
+            else:
+                reporting = _Reporting(client, comfy_progress(ctx, deps.expected["director"]))
+                runner = deps.text_runner(reporting, folder, lambda: ctx.stopping)
             if regime is JobRegime.MULTISHOT:
                 scenario: Any = direct_multishot(
                     runner,
@@ -493,6 +515,10 @@ class ScenarioStep:
     def _find(self, ctx: StepContext, client: Any, recipe: Recipe, photo: int, what: str) -> bool:
         """Whether SAM finds ``what`` on photo ``photo``; a check that fails counts as no."""
         session, deps = ctx.session, self.deps
+        if deps.director is not None:
+            # SAM runs in ComfyUI and needs the GPU memory the director's llama-server holds;
+            # the next director call starts the server again.
+            deps.director.release()
         try:
             path = deps.store.path_for(list_photos(session, ctx.job_id)[photo - 1])
             adapter = deps.recipe_adapter(session, recipe, EngineSlot.KEYFRAME)

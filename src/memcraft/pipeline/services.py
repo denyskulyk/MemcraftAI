@@ -19,18 +19,24 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 import httpx
 
 from memcraft.comfy import DEFAULT_URL, ComfyClient, check_url
 from memcraft.roles.gemma import GemmaClient
+from memcraft.roles.llama_text import LlamaTextRunner
 from memcraft.worker.watchdog import NOT_OURS
 
 if TYPE_CHECKING:
     from memcraft.worker.memory import MemoryWatch
 
 log = logging.getLogger(__name__)
+
+
+class ComfyLikeFree(Protocol):
+    def free(self) -> None: ...
+
 
 PROJECT = Path(__file__).resolve().parents[3]
 COMFY_SCRIPT = PROJECT / "deploy" / "comfyui.ps1"
@@ -42,6 +48,10 @@ GEMMA_MODELS = Path(r"C:\Source\LocalAI\gemma-26b\models")
 GEMMA_MODEL = "gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-Q4_K_M.gguf"
 GEMMA_MMPROJ = "gemma-4-26B-A4B-it-ultra-uncensored-heretic.mmproj-f16.gguf"
 IDLE_MINUTES = 5.0
+DIRECTOR_PORT = 8097
+DIRECTOR_MODELS = Path(r"C:\Source\LocalAI\qwen-27b\models")
+DIRECTOR_MODEL = "RVN-Qwen3.8-27B-Heretic-GSQ-RCO-IQ3_XXS-mtp.gguf"
+DIRECTOR_MMPROJ = "mmproj-Qwen3.8-27B-F16.gguf"
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
@@ -219,8 +229,10 @@ class GemmaServer:
         *,
         idle_minutes: float = IDLE_MINUTES,
         clock: Callable[[], float] = time.monotonic,
+        label: str = "Gemma",
     ) -> None:
         self.config = config or GemmaConfig()
+        self.label = label
         if self.config.port in NOT_OURS:
             raise ValueError(f"port {self.config.port} is not the app's own llama-server")
         self.url = f"http://127.0.0.1:{self.config.port}"
@@ -268,11 +280,11 @@ class GemmaServer:
         config = self.config
         for path in (config.exe, config.model, config.mmproj):
             if not Path(path).is_file():
-                raise ServiceError(f"llama-server or a Gemma file is missing: {path}")
+                raise ServiceError(f"llama-server or a {self.label} file is missing: {path}")
         self._kill_strays()
         config.log_file.parent.mkdir(parents=True, exist_ok=True)
         log_handle = config.log_file.open("ab")
-        log.info("starting Gemma on %s (CPU)", self.url)
+        log.info("starting %s on %s", self.label, self.url)
         started = self._clock()
         process = subprocess.Popen(  # noqa: S603 - the configured llama-server
             config.args(),
@@ -285,7 +297,7 @@ class GemmaServer:
         self._process, self._log = process, log_handle
         self._wait_up(process)
         self._last_used = self._clock()
-        log.info("Gemma is up after %.0f s", self._clock() - started)
+        log.info("%s is up after %.0f s", self.label, self._clock() - started)
 
     def _wait_up(self, process: subprocess.Popen[bytes]) -> None:
         deadline = time.monotonic() + self.config.start_timeout
@@ -296,14 +308,16 @@ class GemmaServer:
                     f"llama-server exited with {process.returncode}; see {self.config.log_file}"
                 )
             if time.monotonic() > deadline:
-                raise ServiceError(f"Gemma did not answer within {self.config.start_timeout} s")
+                raise ServiceError(
+                    f"{self.label} did not answer within {self.config.start_timeout} s"
+                )
             time.sleep(0.5)
 
     def stop(self) -> None:
         with self._lock:
             process = self._process
             if process is not None and process.poll() is None:
-                log.info("stopping Gemma on %s", self.url)
+                log.info("stopping %s on %s", self.label, self.url)
                 _kill(process.pid)
                 with contextlib.suppress(subprocess.TimeoutExpired):
                     process.wait(30)
@@ -312,7 +326,7 @@ class GemmaServer:
 
     def restart(self) -> None:
         with self._lock:
-            log.warning("restarting Gemma on %s", self.url)
+            log.warning("restarting %s on %s", self.label, self.url)
             self.stop()
             self._start()
 
@@ -323,7 +337,7 @@ class GemmaServer:
                 return False
             if self._clock() - self._last_used < self.idle_seconds:
                 return False
-            log.info("Gemma idle for %.0f min", self.idle_seconds / 60)
+            log.info("%s idle for %.0f min", self.label, self.idle_seconds / 60)
             self.stop()
             return True
 
@@ -352,6 +366,89 @@ class GemmaServer:
         for pid in _own_pids("llama-server.exe", rf"--port\s+{self.config.port}\b"):
             log.warning("stopping a stray llama-server %d on port %d", pid, self.config.port)
             _kill(pid)
+
+
+@dataclass
+class DirectorConfig(GemmaConfig):
+    """Qwen 3.8 27B (IQ3_XXS with its MTP head) on the GPU for the director, 2026-11-24.
+
+    Model, vision file and buffers fill about 11.6 of 12 GB, so ComfyUI frees its models first
+    and the server stops when the step ends. A context of 6144 holds 3 photos at 320 image tokens,
+    the 5.7k-character prompt and an 1800-token answer.
+    """
+
+    model: Path = DIRECTOR_MODELS / DIRECTOR_MODEL
+    mmproj: Path = DIRECTOR_MODELS / DIRECTOR_MMPROJ
+    port: int = DIRECTOR_PORT
+    context: int = 6144
+    image_max_tokens: int | None = 320
+    log_file: Path = PROJECT / "data" / "logs" / "director-server.log"
+    start_timeout: float = 180.0
+
+    def args(self) -> list[str]:
+        return [
+            str(self.exe),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(self.port),
+            "-m",
+            str(self.model),
+            "--mmproj",
+            str(self.mmproj),
+            "-fa",
+            "on",
+            "-ngl",
+            "99",
+            "--jinja",
+            "-ctk",
+            "q8_0",
+            "-ctv",
+            "q8_0",
+            "-np",
+            "1",
+            "-c",
+            str(self.context),
+            "-b",
+            "512",
+            "-ub",
+            "512",
+            "--image-max-tokens",
+            str(self.image_max_tokens or 320),
+            "--spec-type",
+            "draft-mtp",
+            "--spec-draft-n-max",
+            "2",
+        ]
+
+
+class LlamaDirector:
+    """The director's llama-server for one step: `runner()` gives a TextRunner that frees
+    ComfyUI's models and starts the server before a call; `release()` stops the server so a
+    ComfyUI run (SAM) gets the GPU back; leaving `session()` stops it for the keyframes."""
+
+    def __init__(self, server: GemmaServer, comfy: ComfyLikeFree) -> None:
+        self.server = server
+        self.comfy = comfy
+
+    def _up(self) -> None:
+        if not self.server.running:
+            self.comfy.free()
+        self.server.ensure_up()
+
+    def runner(self) -> LlamaTextRunner:
+        return LlamaTextRunner(self.server.url, before_call=self._up)
+
+    def release(self) -> None:
+        if self.server.running:
+            self.server.stop()
+
+    @contextlib.contextmanager
+    def session(self) -> Iterator[LlamaTextRunner]:
+        try:
+            yield self.runner()
+        finally:
+            self.server.stop()
 
 
 LLAMA_SWAP_URL = "http://127.0.0.1:8080"

@@ -56,6 +56,13 @@ def main(argv: list[str] | None = None) -> int:
         help="swap: the memcraft-gemma model of llama-swap; own: a llama-server on 8098",
     )
     parser.add_argument(
+        "--director",
+        choices=("llama", "comfyui"),
+        default="llama",
+        help="llama: Qwen 3.8 27B IQ3_XXS on the app's llama-server (port 8097, GPU); "
+        "comfyui: the Qwen 3.8 graph inside ComfyUI",
+    )
+    parser.add_argument(
         "--min-free-ram-gb",
         type=float,
         default=6.0,
@@ -106,7 +113,9 @@ def _real(engine: Engine, args: argparse.Namespace, settings: object) -> int:
     from memcraft.pipeline import build_registry
     from memcraft.pipeline.services import (
         ComfyServer,
+        DirectorConfig,
         GemmaServer,
+        LlamaDirector,
         SwapGemma,
         memory_watch,
         stop_all,
@@ -125,12 +134,18 @@ def _real(engine: Engine, args: argparse.Namespace, settings: object) -> int:
     gemma: GemmaServer | SwapGemma = (
         SwapGemma() if args.gemma == "swap" else GemmaServer(idle_minutes=args.gemma_idle_minutes)
     )
+    director = (
+        LlamaDirector(GemmaServer(DirectorConfig(), label="the director"), comfy)
+        if args.director == "llama"
+        else None
+    )
     deps = Deps(
         store=store,
         comfy=comfy,
         gemma=gemma,
         work_dir=PROJECT / "data" / "work",
         workflows_dir=PROJECT / "workflows",
+        director=director,
     )
 
     def unload(lane: JobLane) -> None:
@@ -175,7 +190,7 @@ def _real(engine: Engine, args: argparse.Namespace, settings: object) -> int:
     idle.start()
 
     def cleanup() -> None:
-        stop_all(comfy.free, gemma.stop)
+        stop_all(comfy.free, gemma.stop, *([director.release] if director else []))
 
     return _serve(worker, args, schedule, cleanup)
 
