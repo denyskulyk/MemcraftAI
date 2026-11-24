@@ -49,11 +49,14 @@ EDIT_SCENE = (
     "expressions as follows. The place: {place} The light: {light} Faces come from {photos}. "
 )
 # Not only people: a photo may show a cat (E16: "the same people" turned a cat into two men).
+# An A-pose, because "empty-handed, relaxed" hid the hands behind the back (E16).
 CLEAN_PERSON = (
     "Edit <image1>: exactly the same {looks}, with the same face, hair or fur, body and "
-    "clothing as in <image1>, and nobody else. Show them alone in a relaxed neutral pose, "
-    "the whole body from head to feet, hands or paws empty. Remove every object they hold "
-    "completely. Plain light grey studio background, even soft light."
+    "clothing as in <image1>, and nobody else. Show them alone, standing in an A-pose: arms "
+    "straight down and a little away from the body, both hands open with the palms facing "
+    "forward and every finger visible, nothing in them. The whole body from head to feet. "
+    "Remove every object they hold completely. Plain light grey studio background, even soft "
+    "light."
 )
 PROP_FROM_PHOTO = (
     "Show only the object from <image1>: {words}. Alone and whole at its full length and size, "
