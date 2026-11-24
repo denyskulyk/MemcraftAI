@@ -487,3 +487,18 @@ def test_match_colours_takes_the_start_keyframes_light(tmp_path):
     assert all(abs(m - t) < 6 for m, t in zip(means, (200, 180, 160), strict=True))
     with pytest.raises(LimitError):
         match_colours(tmp_path / "missing.png", start)
+
+
+def test_compose_prompt_puts_face_crops_between_people_and_props():
+    from memcraft.engines import compose_prompt
+
+    text = compose_prompt(
+        "The man from <image1> waves at the troll from <image2>.",
+        people=2,
+        props=["a log"],
+        faces=[1, 2],
+    )
+    assert "The people come from <image2>, <image3>" in text
+    assert "<image4>, <image5> show the faces of <image2>, <image3> close up" in text
+    assert "<image6> shows only the look of a log" in text
+    assert text.endswith("The man from <image2> waves at the troll from <image3>.")

@@ -425,6 +425,7 @@ class ScenarioStep:
                     cast=job.cast,
                     inventory=inventory,
                     confirm=confirm,
+                    faces=face_boxes(session, deps.store, ctx.job_id) if confirm else None,
                 )
         deps.comfy.clean(folder)
         output = scenario.as_output()
@@ -497,6 +498,42 @@ class ScenarioStep:
             return False
 
 
+def face_boxes(session: Session, store: FileStore, job_id: uuid.UUID) -> dict[int, list[float]]:
+    """The largest face of each photo, as fractions [x, y, w, h], for the face crops of the
+    background-first keyframes (E16). A photo without a face found has none."""
+    from memcraft.web.faces import faces_in
+
+    boxes: dict[int, list[float]] = {}
+    for number, photo in enumerate(list_photos(session, job_id), start=1):
+        try:
+            found = faces_in(store.path_for(photo).read_bytes())
+        except Exception as error:  # no face crop is no reason to fail the scenario
+            log.warning("job %s: no face search in photo %d: %s", job_id, number, error)
+            continue
+        if found:
+            box = max(found, key=lambda b: b.w * b.h)
+            boxes[number] = [box.x, box.y, box.w, box.h]
+    return boxes
+
+
+def crop_face(photo: Path, box: Sequence[float], dest: Path) -> Path:
+    """The face with hair and chin, square, from the upright photo, at least 512 px."""
+    with Image.open(photo) as opened:
+        from PIL import ImageOps
+
+        image = ImageOps.exif_transpose(opened).convert("RGB")
+    x, y, w, h = (v * s for v, s in zip(box, (*image.size, *image.size), strict=True))
+    side = max(w, h) * 2.0
+    cx, cy = x + w / 2, y + h / 2 - h * 0.1
+    left, top = max(0, cx - side / 2), max(0, cy - side / 2)
+    right, bottom = min(image.width, left + side), min(image.height, top + side)
+    face = image.crop((round(left), round(top), round(right), round(bottom)))
+    if face.width < 512:
+        face = face.resize((512, round(512 * face.height / face.width)), Image.Resampling.LANCZOS)
+    face.save(dest)
+    return dest
+
+
 def mask_share(path: Path) -> float:
     """How much of a white-on-black mask picture is white."""
     with Image.open(path) as image:
@@ -524,6 +561,8 @@ class KeyframeStep:
         job = session.get_one(Job, ctx.job_id)
         scenario = output_of(ctx, StepName.SCENARIO)
         is_asset = ctx.ordinal >= ASSET_ORDINAL
+        if is_asset and scenario["assets"][ctx.ordinal - ASSET_ORDINAL]["kind"] == "face":
+            return self._face(ctx, scenario["assets"][ctx.ordinal - ASSET_ORDINAL])
         if is_asset:
             keyframe = scenario["assets"][ctx.ordinal - ASSET_ORDINAL]
             references: list[int | str] = [keyframe["photo"] or "canvas"]
@@ -576,6 +615,15 @@ class KeyframeStep:
             "prompt_id": result.prompt_id,
             "colour_matched": matched,
         }
+
+    def _face(self, ctx: StepContext, asset: Mapping[str, Any]) -> Mapping[str, Any]:
+        """A face crop, cut from the photo here; nothing runs on the GPU for it."""
+        session, deps = ctx.session, self.deps
+        photo = deps.store.path_for(list_photos(session, ctx.job_id)[asset["photo"] - 1])
+        with work_folder(deps, ctx) as work:
+            path = crop_face(photo, asset["box"], work / "face.png")
+            saved = save_file(deps, ctx, AssetKind.KEYFRAME, path, PNG, ctx.ordinal)
+        return {"asset_id": str(saved.id), "at": "asset", "seed": 0, "seconds": 0.0}
 
     def _reference(self, ctx: StepContext, ref: int | str, photos: list[Path], work: Path) -> Path:
         """The file of one reference: a photo number, "start", "asset:K" or "canvas"."""

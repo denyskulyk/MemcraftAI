@@ -391,14 +391,20 @@ class Keyframe:
     props: list[str] = field(default_factory=list)
     # "compose": put together from the background, people and prop pictures (E16).
     layout: str = "photos"
+    # Photo numbers whose face crop follows the people pictures (compose layout).
+    faces: list[int] = field(default_factory=list)
     # The director moved the camera for this keyframe (compose layout).
     camera_moves: bool = False
 
     def prompt(self, bible: dict[str, Any]) -> str:
         if self.layout == "compose":
-            people = len(self.references) - 1 - len(self.props)
+            people = len(self.references) - 1 - len(self.props) - len(self.faces)
             return compose_prompt(
-                self.action, people=people, props=self.props, camera_moves=self.camera_moves
+                self.action,
+                people=people,
+                props=self.props,
+                camera_moves=self.camera_moves,
+                faces=self.faces,
             )
         people = len(self.references) - len(self.props) - ("start" in self.references)
         if self.references and self.references[0] == "start":
@@ -429,6 +435,8 @@ class AssetPicture:
     seed: int
     prompt: str
     cutout: bool = False
+    # kind "face": the face box in the photo as fractions [x, y, w, h] (E16).
+    box: list[float] | None = None
 
 
 @dataclass(frozen=True)
@@ -590,6 +598,8 @@ OPTIONAL_KEYFRAME_LABELS = ("PROPS", "CLEAN", "PROP PICTURES", "CAMERA MIDDLE", 
 MAX_PROP_PICTURES = 2
 MAX_REFERENCES = 4
 MAX_COMPOSE_REFERENCES = 6
+# A face crop is cut from the photo in the worker; nothing is drawn for it.
+FACE_CROP = "The face of <image1>, cropped."
 # The prompt of a photo cut out as it is; the workflow draws nothing for it.
 CUT_ONLY = "Cut out the people of <image1> as they are."
 _SAME_CAMERA = re.compile(r"^(?:same|unchanged|no change|static|none|-)\b", re.I)
@@ -698,6 +708,7 @@ def asset_pictures(
     background: str | None = None,
     held: Mapping[int, Sequence[str]] | None = None,
     confirm: Callable[[int, str], bool] | None = None,
+    faces: Mapping[int, Sequence[float]] | None = None,
 ) -> tuple[list[AssetPicture], list[str]]:
     """The pictures to draw before the keyframes, from the CLEAN and PROP PICTURES sections,
     and notes on what was left out.
@@ -737,7 +748,10 @@ def asset_pictures(
             continue
         if all(known != w for w, _ in props):
             props.append((known, photo))
-    limit = MAX_COMPOSE_REFERENCES - 1 if background is not None else MAX_REFERENCES
+    face_boxes = dict(faces or {}) if background is not None else {}
+    limit = (
+        MAX_COMPOSE_REFERENCES - 1 - len(face_boxes) if background is not None else MAX_REFERENCES
+    )
     room = max(0, min(MAX_PROP_PICTURES, limit - photos))
     if len(props) > room:
         notes.append(f"PROP PICTURES: {len(props) - room} left out (at most {room})")
@@ -770,6 +784,8 @@ def asset_pictures(
             continue
         text = CLEAN_PERSON.format(looks=looks or "people or animals")
         pictures.append(AssetPicture("clean", number, looks, seeds.pop(0), text, cut))
+    for photo, box in sorted(face_boxes.items()):
+        pictures.append(AssetPicture("face", photo, "", 0, FACE_CROP, False, list(box)))
     for words, photo in props:
         text = (PROP_FROM_PHOTO if photo else PROP_NEW).format(words=words)
         pictures.append(AssetPicture("prop", photo, words, seeds.pop(0), text, cut))
@@ -814,6 +830,7 @@ def direct_keyframes(
     cast: Sequence[Mapping[str, Any]] | None = None,
     inventory: Sequence[Mapping[str, Any]] | None = None,
     confirm: Callable[[int, str], bool] | None = None,
+    faces: Mapping[int, Sequence[float]] | None = None,
 ) -> KeyframePlan:
     """``inventory``: the checked photo inventory (E16), each entry with ``checked``: object ->
     whether SAM found it; it goes to the director and decides who is drawn empty-handed."""
@@ -889,12 +906,14 @@ def direct_keyframes(
         background=background,
         held=confirmed_holds(inventory) if compose else None,
         confirm=confirm,
+        faces=faces,
     )
     problems += notes
     clean = {a.photo: f"asset:{i}" for i, a in enumerate(assets) if a.kind == "clean"}
     people_refs: list[int | str] = [clean.get(n, n) for n in range(1, count + 1)]
     prop_refs: list[int | str] = [f"asset:{i}" for i, a in enumerate(assets) if a.kind == "prop"]
     prop_words = [a.words for a in assets if a.kind == "prop"]
+    face_photos = [a.photo or 0 for a in assets if a.kind == "face"]
     positions = keyframe_frames(counts)
     tail = fill(found["suffix"])
     keyframes = []
@@ -926,6 +945,7 @@ def direct_keyframes(
                     props=prop_words,
                     layout="compose",
                     camera_moves=moves,
+                    faces=face_photos,
                 )
             )
             continue

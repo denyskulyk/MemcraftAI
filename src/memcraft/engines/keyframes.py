@@ -196,8 +196,19 @@ COMPOSE = (
 )
 
 
+FACES = (
+    "{faces} show the faces of {people} close up: keep those faces exactly, the same features, "
+    "skin, hair and expression lines. "
+)
+
+
 def compose_prompt(
-    action: str, *, people: int, props: Sequence[str] = (), camera_moves: bool = False
+    action: str,
+    *,
+    people: int,
+    props: Sequence[str] = (),
+    camera_moves: bool = False,
+    faces: Sequence[int] = (),
 ) -> str:
     """A keyframe put together from asset pictures (E16, Denys's layout): <image1> is the empty
     place, then one cut-out picture per photo, then the prop pictures. The action names the
@@ -206,12 +217,20 @@ def compose_prompt(
         raise LimitError("a keyframe takes 1 to 3 photos")
     tags = ", ".join(f"<image{i}>" for i in range(2, people + 2))
     keep = "" if camera_moves else ", the camera position and the framing"
+    # E16: then a close crop of each friend's face (``faces``: their photo numbers), because in
+    # a full-body keyframe the face is too small in the people pictures to keep its identity.
+    face_text = ""
+    if faces:
+        face_tags = ", ".join(f"<image{people + 1 + i}>" for i in range(1, len(faces) + 1))
+        owners = ", ".join(f"<image{photo + 1}>" for photo in faces)
+        face_text = FACES.format(faces=face_tags, people=owners)
+    first_prop = people + 1 + len(faces)
     takes = "".join(
-        PROP_LOOK.format(words=words.strip(), image=f"<image{people + 1 + i}>") + " "
+        PROP_LOOK.format(words=words.strip(), image=f"<image{first_prop + i}>") + " "
         for i, words in enumerate(props, start=1)
     )
     moved = re.sub(r"<image([1-9])>", lambda m: f"<image{int(m.group(1)) + 1}>", action.strip())
-    return COMPOSE.format(keep=keep, people=tags) + takes + ONCE + moved
+    return COMPOSE.format(keep=keep, people=tags) + face_text + takes + ONCE + moved
 
 
 def edit_prompt(action: str, *, place: str, light: str, photos: int) -> str:
