@@ -26,7 +26,7 @@ from memcraft.engines import (
     register_defaults,
 )
 from memcraft.engines.base import EngineError
-from memcraft.engines.keyframes import reference_size
+from memcraft.engines.keyframes import match_colours, reference_size
 from memcraft.models import (
     EngineSlot,
     Job,
@@ -229,12 +229,14 @@ def test_matching_prompt():
     assert start.startswith("New place, replace every photo background completely: A beach.")
     assert "<image1>, <image2>" in start and start.endswith("They wave.")
     later = matching_prompt(
-        "They jump.", place="A beach.", light="", photos=2, start_reference=True
+        "They jump.", place="A beach.", light="Noon sun.", photos=2, start_reference=True
     )
     assert later.startswith(
         "Same scene as <image3>: same place, light, camera position, shot size and framing, "
         "and the same objects in the same colours"
     )
+    # E16: the place and light sentences are repeated word for word.
+    assert "The place: A beach. The light: Noon sun. Faces come from <image1>, <image2>." in later
     with pytest.raises(LimitError):
         matching_prompt("x", place="", light="", photos=4, start_reference=False)
 
@@ -382,9 +384,14 @@ def test_multishot_plan():
 
 def test_keyframes_plan():
     short = plan(RULES["keyframes"], JobLength.SHORT, frames=97)
-    assert short.keyframes == ("start", "middle", "end")
+    # E16: one run goes from the start keyframe to the end keyframe, no middle.
+    assert short.keyframes == ("start", "end")
     (run,) = short.runs
-    assert (run.first, run.first_keyframe, run.guides) == (First.KEYFRAME, 0, ((1, 48), (2, -1)))
+    assert (run.first, run.first_keyframe, run.guides) == (First.KEYFRAME, 0, ((1, -1),))
+    # A scenario from before E16 holds three keyframes and keeps its middle guide.
+    old = plan(RULES["keyframes"], JobLength.SHORT, frames=97, keyframes=3)
+    assert old.keyframes == ("start", "middle", "end")
+    assert old.runs[0].guides == ((1, 48), (2, -1))
     long = plan(RULES["keyframes"], JobLength.LONG)
     first, second = long.runs
     # Run 1 keeps its end free; run 2 continues from its real last frame.
@@ -463,3 +470,20 @@ def test_keyframe_guides_pull_at_half_strength():
         assert all(run.guide_strength == 0.5 for run in runs)
         assert all(run.first_strength == 1.0 for run in runs)
     assert plan(RULES["multishot"], JobLength.SHORT).runs[0].guide_strength == 1.0
+
+
+def test_match_colours_takes_the_start_keyframes_light(tmp_path):
+    from PIL import Image, ImageStat
+
+    start, dark = tmp_path / "start.png", tmp_path / "dark.png"
+    Image.new("RGB", (64, 112), (200, 180, 160)).save(start)
+    picture = Image.new("RGB", (64, 112), (40, 30, 20))
+    picture.paste((90, 70, 50), (0, 0, 32, 112))  # some spread, so the shape survives
+    picture.save(dark)
+    match_colours(dark, start)
+    matched = Image.open(dark).convert("RGB")
+    assert matched.size == (64, 112)
+    means = ImageStat.Stat(matched).mean
+    assert all(abs(m - t) < 6 for m, t in zip(means, (200, 180, 160), strict=True))
+    with pytest.raises(LimitError):
+        match_colours(tmp_path / "missing.png", start)

@@ -395,7 +395,6 @@ def test_planning_by_phase(engine, session, store):
         (StepName.SCENARIO, 0, None),
         (StepName.KEYFRAME, 0, None),
         (StepName.KEYFRAME, 1, None),
-        (StepName.KEYFRAME, 2, None),
         (StepName.CHECK, 0, "keyframes"),
         (StepName.CLIP, 0, None),
     ]
@@ -483,32 +482,35 @@ def test_short_two_photos_with_idea(engine, session, store, fakes):
     idea = session.scalar(select(Idea).where(Idea.job_id == job.id))
     assert idea.text == "they row across a fountain" and idea.approved_at is not None
     assert session.get(Job, job.id).regime is JobRegime.KEYFRAMES
-    start, middle, end = fakes.adapters.keyframes
+    start, end = fakes.adapters.keyframes  # E16: no middle keyframe in a short video
     assert len(start.photos) == 2 and start.extra_references == ()
-    assert middle.extra_references and end.extra_references
+    assert end.extra_references
+    assert "The place: " in end.prompt and "The light: " in end.prompt
     keyframes = assets(session, job, AssetKind.KEYFRAME)
     (clip,) = fakes.adapters.clips
     assert clip.first_strength == 1.0 and clip.frames == 241
-    assert [guide.frame for guide in clip.guides] == [120, -1]
+    assert [guide.frame for guide in clip.guides] == [-1]
     by_ordinal = {a.ordinal: store.path_for(a) for a in keyframes}
     assert clip.first_frame == by_ordinal[0]
-    assert [g.image for g in clip.guides] == [by_ordinal[1], by_ordinal[2]]
+    assert [g.image for g in clip.guides] == [by_ordinal[1]]
+    assert output(session, job, StepName.KEYFRAME, 1)["colour_matched"] is True
+    assert output(session, job, StepName.KEYFRAME, 0)["colour_matched"] is False
     assert by_ordinal[100]  # the last frame of run 0
     check = output(session, job, StepName.CHECK)
     assert check["kind"] == "keyframes" and check["faces_ok"] is True
-    assert [entry["face"] for entry in check["keyframes"]] == [True, True, True]
-    assert fakes.gemma.calls.count("critic") == 3
+    assert [entry["face"] for entry in check["keyframes"]] == [True, True]
+    assert fakes.gemma.calls.count("critic") == 2
 
 
 def test_three_people_draw_middle_and_end_from_the_photos(engine, session, store, fakes):
     job = new_job(session, store, photos=3, idea="three friends and a kite")
     worker(engine, fakes, store).drain()
     assert status_of(session, job) is S.PREVIEW_READY
-    start, middle, end = fakes.adapters.keyframes
-    assert [len(k.photos) for k in (start, middle, end)] == [3, 3, 3]
-    assert start.extra_references == middle.extra_references == end.extra_references == ()
-    assert middle.prompt.startswith("New place, replace every photo background completely")
-    assert "same place, light, camera position and framing" in middle.prompt.lower()
+    start, end = fakes.adapters.keyframes
+    assert [len(k.photos) for k in (start, end)] == [3, 3]
+    assert start.extra_references == end.extra_references == ()
+    assert end.prompt.startswith("New place, replace every photo background completely")
+    assert "same place, light, camera position and framing" in end.prompt.lower()
 
 
 def test_long_one_photo_joins_two_runs(engine, session, store, fakes):
@@ -540,27 +542,26 @@ def test_long_one_photo_joins_two_runs(engine, session, store, fakes):
 def test_a_failed_face_is_only_a_warning(engine, session, store, fakes, caplog):
     fakes.gemma.verdicts = [
         verdict(False, "The man lost his beard."),  # start
-        passing(),  # middle
-        verdict(False, "The woman is someone else."),  # end
+        verdict(False, "The woman is someone else."),  # end (a short video has no middle)
     ]
     job = new_job(session, store, photos=2, idea="rowing")
     with caplog.at_level("WARNING", logger="memcraft.pipeline.steps"):
         worker(engine, fakes, store).drain()
     assert status_of(session, job) is S.PREVIEW_READY
     # Nothing is drawn again, and the clip uses the keyframes as drawn.
-    assert len(fakes.adapters.keyframes) == 3
-    assert fakes.gemma.calls.count("critic") == 3
+    assert len(fakes.adapters.keyframes) == 2
+    assert fakes.gemma.calls.count("critic") == 2
     check = output(session, job, StepName.CHECK)
-    start, middle, end = check["keyframes"]
+    start, end = check["keyframes"]
     assert (start["face"], start["face_why"]) == (False, "The man lost his beard.")
-    assert middle["face"] is True and end["face"] is False
+    assert end["face"] is False
     assert "retry" not in start and "story" not in start and "artefacts" not in start
     assert check["faces_ok"] is False
     assert start["asset_id"] == output(session, job, StepName.KEYFRAME)["asset_id"]
     (clip,) = fakes.adapters.clips
     kept = session.get(Asset, uuid.UUID(start["asset_id"]))
     assert clip.first_frame == store.path_for(kept)
-    assert len([a for a in assets(session, job, AssetKind.KEYFRAME) if a.ordinal < 100]) == 3
+    assert len([a for a in assets(session, job, AssetKind.KEYFRAME) if a.ordinal < 100]) == 2
     assert "The man lost his beard." in caplog.text
 
 

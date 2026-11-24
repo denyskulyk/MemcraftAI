@@ -173,7 +173,8 @@ def test_positions_match_the_engines_plan():
         ours = keyframe_frames(runs)
         names = engines.keyframes
         guided = {names[k]: f for run in engines.runs for k, f in run.guides if f != LAST}
-        assert guided == {"middle": ours["middle"]}
+        # E16: a short video has no middle keyframe.
+        assert guided == ({"middle": ours["middle"]} if length is LONG else {})
         assert engines.frames == frames and ours["end"] == frames - 1
 
 
@@ -289,10 +290,14 @@ def test_a_short_keyframe_plan():
             "look": "short curly brown hair, full beard, red rain jacket",
         }
     ]
-    start, middle, end = plan.keyframes
+    # E16: a short video draws start and end; the director's middle is not drawn.
+    start, end = plan.keyframes
+    assert (start.at, end.at) == ("start", "end")
+    assert end.frame == 240 and end.seed == director.render_seeds(7, 4)[2]
     assert start.action.startswith("Static eye-level medium shot, waist up. The man")
     assert start.references == [1]
-    assert middle.references == [1, "start"]
+    assert end.references == [1, "start"]
+    assert plan.runs[0].keyframes == [("start", 0), ("end", 240)]
     assert "from <image1>" in end.action and "Image 1" not in end.action
     assert all(
         k.action.endswith("Keep every face and identity exactly as in the photos.")
@@ -301,20 +306,20 @@ def test_a_short_keyframe_plan():
     # The full prompt: the new place first for the start, the same scene for the others.
     assert start.prompt(plan.bible).startswith("New place, replace every photo background")
     assert "A windy city park in autumn" in start.prompt(plan.bible)
-    assert middle.prompt(plan.bible).startswith("Same scene as <image2>:")
-    assert [k.frame for k in plan.keyframes] == [0, 120, 240]
+    assert end.prompt(plan.bible).startswith("Same scene as <image2>:")
+    assert [k.frame for k in plan.keyframes] == [0, 240]
     assert plan.frames == 241
     (run,) = plan.runs
     assert (run.frames, run.start, run.first) == (241, 0, "keyframe")
-    assert run.keyframes == [("start", 0), ("middle", 120), ("end", 240)]
+    assert run.keyframes == [("start", 0), ("end", 240)]
     # Picture tags mean nothing to LTX, and there is never music.
     assert "image" not in run.prompt.lower()
     assert run.prompt.endswith("Wind howls. No music.")
-    assert len({k.seed for k in plan.keyframes} | {run.seed}) == 4
+    assert len({k.seed for k in plan.keyframes} | {run.seed}) == 3
     assert plan.problems == []
     output = plan.as_output()
     assert output["keyframes"][0]["at"] == "start"
-    assert output["keyframes"][1]["prompt"] == middle.prompt(plan.bible)
+    assert output["keyframes"][1]["prompt"] == end.prompt(plan.bible)
 
 
 def test_a_long_keyframe_plan_with_two_photos():
@@ -650,7 +655,7 @@ def test_an_answer_without_props_still_parses():
     plan = direct_keyframes(run_text, kf_prompt(), [PHOTO], "He flies away")
     assert plan.bible["props"] == []
     assert all("these objects" not in k.action for k in plan.keyframes)
-    assert plan.keyframes[2].action.startswith("Static eye-level medium shot, waist up. The man")
+    assert plan.keyframes[1].action.startswith("Static eye-level medium shot, waist up. The man")
 
 
 def test_props_do_not_run_into_the_camera():
@@ -680,10 +685,10 @@ LIGHT: Midday sun.
 CAMERA: Static full-body shot at eye level.
 KEYFRAME START: The man in the red jacket from <image1> waves at the man in the grey hoodie
 from <image1>; the woman in the green coat from <image2> watches.
-KEYFRAME MIDDLE: <maksym> waves back, grinning, while the woman in the green coat
-from <image2> covers her mouth.
+KEYFRAME MIDDLE: The man in the grey hoodie from <image1> waves back, grinning, while the woman
+in the green coat from <image2> covers her mouth.
 KEYFRAME END: The woman in the green coat from <image2> laughs, the man in the red jacket
-from <image1> and the man in the grey hoodie from <image1> shrug.
+from <image1> and <maksym> shrug.
 RUN 1: The man in the red jacket waves and says "Hi!". <maksym> answers "Hi to you too".
 The woman in the green coat bursts out laughing. Street noise.
 """
@@ -727,14 +732,14 @@ def test_the_director_gets_a_cast_and_writes_visual_tags():
         (1, "the man in the grey hoodie"),
         (2, "the woman in the green coat"),
     ]
-    middle = plan.keyframes[1].action
-    assert "The man in the grey hoodie from <image1> waves back" in middle
-    assert "<maksym>" not in middle
+    end = plan.keyframes[1].action
+    assert "and the man in the grey hoodie from <image1> shrug" in end
+    assert "<maksym>" not in end
     (run,) = plan.runs
     assert "<" not in run.prompt and "maksym" not in run.prompt.lower()
     assert '. The man in the grey hoodie answers "Hi to you too".' in run.prompt
     assert plan.problems == [
-        "KEYFRAME MIDDLE: 1 name tags replaced",
+        "KEYFRAME END: 1 name tags replaced",
         "RUN 1: 1 name tags replaced by visual tags",
     ]
     # Three people over two photos: middle and end come from the photos only.

@@ -81,7 +81,7 @@ def render_plan(session: Session, job: Job, done: Sequence[JobStep]) -> list[Pla
     else:
         rules = choices.rules_for_plan(session, job, regime)
         runs = rules.runs_long if job.length is JobLength.LONG else rules.runs_short
-        keyframes = 3 if regime is JobRegime.KEYFRAMES else 0
+        keyframes = (3 if runs > 1 else 2) if regime is JobRegime.KEYFRAMES else 0
     critic = choices.critic_planned(session, job)
     steps = [PlannedStep(StepName.SCENARIO, inputs={"regime": regime.value})]
     steps += [PlannedStep(StepName.KEYFRAME, n, keyframes, {"n": n}) for n in range(keyframes)]

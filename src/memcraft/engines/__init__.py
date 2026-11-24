@@ -33,6 +33,7 @@ from memcraft.engines.keyframes import (
     KeyframeRequest,
     KeyframeResult,
     QwenImageKeyframes,
+    match_colours,
     matching_prompt,
 )
 from memcraft.engines.recipes import (
@@ -74,6 +75,7 @@ __all__ = [
     "adapter_for",
     "frames_for",
     "is_8n_plus_1",
+    "match_colours",
     "matching_prompt",
     "pinned_adapter",
     "plan",

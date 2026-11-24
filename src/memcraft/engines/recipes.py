@@ -103,10 +103,18 @@ RULES: dict[str, RecipeRules] = {
 }
 
 
-def plan(rules: RecipeRules, length: JobLength, frames: int | Sequence[int] | None = None) -> Plan:
+def plan(
+    rules: RecipeRules,
+    length: JobLength,
+    frames: int | Sequence[int] | None = None,
+    keyframes: int | None = None,
+) -> Plan:
     """Keyframes to draw and runs to render.
 
     ``frames`` overrides the default length of every run, or gives one length per run.
+    ``keyframes`` is how many keyframes the scenario holds: by default 2 (start, end) for one
+    run and 3 (start, middle, end) for two; 3 for one run is how scenarios from before E16 were
+    planned.
     """
     count = rules.runs_long if length is JobLength.LONG else rules.runs_short
     if frames is None or isinstance(frames, int):
@@ -134,6 +142,11 @@ def plan(rules: RecipeRules, length: JobLength, frames: int | Sequence[int] | No
     middle = 8 * round(lengths[0] / 16)
     g = rules.guide_strength
     if count == 1:
+        if (keyframes or 2) == 2:
+            # E16: a middle keyframe is one more picture to drift (light, duplicates) and held
+            # the action (E15), so one run goes from the start keyframe to the end keyframe.
+            runs.append(RunPlan(0, lengths[0], First.KEYFRAME, 0, ((1, LAST),), 1.0, 1, 1, g))
+            return Plan(rules.regime, ("start", "end"), tuple(runs))
         # E0.4: start, middle and end in one run move properly when the keyframes match.
         runs.append(
             RunPlan(0, lengths[0], First.KEYFRAME, 0, ((1, middle), (2, LAST)), 1.0, 1, 1, g)

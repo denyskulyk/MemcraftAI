@@ -27,6 +27,7 @@ NEW_PLACE = (
 SAME_SCENE = (
     "Same scene as {start}: same place, light, camera position, shot size and framing, and the "
     "same objects in the same colours; only the action and expressions change. "
+    "The place: {place} The light: {light} "
     "Faces come from {photos}. "
 )
 # Pixels of image_2 to image_4; image_1 is drawn at the canvas size.
@@ -112,10 +113,36 @@ def matching_prompt(
         raise LimitError("a keyframe takes 1 to 3 photos")
     tags = ", ".join(f"<image{i}>" for i in range(1, photos + 1))
     if start_reference:
-        prefix = SAME_SCENE.format(start=f"<image{photos + 1}>", photos=tags)
+        # The place and light sentences too, word for word as in the start keyframe: the start
+        # keyframe alone goes in at reference size and the light drifted (E16).
+        prefix = SAME_SCENE.format(
+            start=f"<image{photos + 1}>", photos=tags, place=place.strip(), light=light.strip()
+        )
     else:
         prefix = NEW_PLACE.format(place=place.strip(), light=light.strip(), photos=tags)
     return prefix + action.strip()
+
+
+def match_colours(image: Path, reference: Path, strength: float = 1.0) -> None:
+    """Shift ``image`` (in place) to the brightness and tint of ``reference``: Reinhard colour
+    transfer, the mean and spread of each Lab channel. Middle and end keyframes drifted up to
+    50 of 255 in brightness from the start keyframe; this took it out in 0.1 s (E16)."""
+    import cv2
+    import numpy as np
+
+    source = cv2.imread(str(image), cv2.IMREAD_COLOR)
+    target = cv2.imread(str(reference), cv2.IMREAD_COLOR)
+    if source is None or target is None:
+        raise LimitError(f"cannot read {image if source is None else reference}")
+    a = cv2.cvtColor(source, cv2.COLOR_BGR2LAB).astype(np.float32)
+    b = cv2.cvtColor(target, cv2.COLOR_BGR2LAB).astype(np.float32)
+    mean_a, spread_a = a.reshape(-1, 3).mean(0), a.reshape(-1, 3).std(0) + 1e-6
+    mean_b, spread_b = b.reshape(-1, 3).mean(0), b.reshape(-1, 3).std(0)
+    moved = (a - mean_a) / spread_a * spread_b + mean_b
+    mixed = a + (moved - a) * strength
+    out = cv2.cvtColor(np.clip(mixed, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)
+    if not cv2.imwrite(str(image), out):
+        raise LimitError(f"cannot write {image}")
 
 
 class QwenImageKeyframes(Adapter):

@@ -47,6 +47,7 @@ from memcraft.engines import (
     Guide,
     KeyframeRequest,
     RunOptions,
+    match_colours,
     pinned_adapter,
     plan,
     rules_for,
@@ -450,6 +451,12 @@ class KeyframeStep:
                     work / "keyframe.png",
                     run_options(ctx, deps.expected["keyframe"], 0.02, 0.95),
                 )
+            matched = False
+            if ctx.ordinal > 0:
+                # Middle and end keyframes take the start keyframe's brightness and tint (E16).
+                start = output_of(ctx, StepName.KEYFRAME, 0)
+                match_colours(result.image, asset_path(session, deps.store, start["asset_id"]))
+                matched = True
             asset = save_file(deps, ctx, AssetKind.KEYFRAME, result.image, PNG, ctx.ordinal)
         deps.comfy.clean(request.folder)
         versions.pin_step(session, _row(ctx), workflow=workflow)
@@ -459,6 +466,7 @@ class KeyframeStep:
             "seed": request.seed,
             "seconds": round(result.seconds, 1),
             "prompt_id": result.prompt_id,
+            "colour_matched": matched,
         }
 
 
@@ -637,7 +645,8 @@ def clip_request(
         raise PipelineError("the job has no pinned recipe")
     recipe = session.get_one(Recipe, job.recipe_id)
     frames = [r["frames"] for r in scenario["runs"]]
-    run_plan = plan(rules_for(recipe), job.length, frames).runs[run]
+    count = len(scenario.get("keyframes") or []) or None
+    run_plan = plan(rules_for(recipe), job.length, frames, count).runs[run]
     keyframes = chosen_keyframes(outputs)
     if run_plan.first is First.PHOTO:
         photo = list_photos(session, job.id)[0]

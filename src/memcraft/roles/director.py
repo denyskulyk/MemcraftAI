@@ -644,6 +644,11 @@ def direct_keyframes(
     tail = fill(found["suffix"])
     keyframes = []
     for index, at in enumerate(("start", "middle", "end")):
+        if at == "middle" and not two:
+            # E16: one run is guided by the start and end keyframes only (memcraft.engines.plan);
+            # the director still writes KEYFRAME MIDDLE, which helps it plan the action.
+            positions.pop("middle")
+            continue
         body, replaced = replace_cast_tags(
             sections[f"KEYFRAME {at.upper()}"], mapping, with_image=True
         )
