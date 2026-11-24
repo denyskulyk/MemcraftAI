@@ -38,7 +38,7 @@ ADAPTERS: dict[str, type[Adapter]] = {
 }
 WORKFLOW_FOLDERS = {
     QwenImageKeyframes.workflow_name: "keyframe-qwen-image-2.1-v4",
-    LtxClips.workflow_name: "clip-ltx-2.5-v4",
+    LtxClips.workflow_name: "clip-ltx-2.5-v5",
 }
 
 

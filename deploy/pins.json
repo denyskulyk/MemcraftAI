@@ -60,6 +60,11 @@
       "git": null,
       "files_sha256": "c4b8d6f656a42fbbbc11afb5b3eea77d1dd18d147e28166dcc4b2f2a1bb77697"
     },
+    "memcraft-nodes": {
+      "version": null,
+      "git": null,
+      "files_sha256": "15bffdd8e079d62b91d4c2f0ed4b568e4fe4694fcd75880c9c5703f739c79554"
+    },
     "rgthree-comfy": {
       "version": "1.0.2610300006",
       "git": null,

@@ -29,6 +29,7 @@ REQUIRED = {
     "keyframe-qwen-image-2.1-v4": {"image_1": "a.png", "prompt": "a cat", "seed": 7},
     "clip-ltx-2.5-v2": {"first_frame": "a.png", "prompt": "a cat", "seed": 7},
     "clip-ltx-2.5-v4": {"first_frame": "a.png", "prompt": "a cat", "seed": 7},
+    "clip-ltx-2.5-v5": {"first_frame": "a.png", "prompt": "a cat", "seed": 7},
     "clip-ltx-2.5-v3": {"first_frame": "a.png", "prompt": "a cat", "seed": 7},
     "clip-ltx-2.5-v1": {"first_frame": "a.png", "prompt": "a cat", "seed": 7},
 }
