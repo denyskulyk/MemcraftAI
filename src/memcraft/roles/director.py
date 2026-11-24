@@ -649,6 +649,11 @@ def asset_pictures(
         if known is None:
             notes.append(f"PROP PICTURES: {words!r} is not in PROPS; left out")
             continue
+        if background is not None and photo is None:
+            # E16: a prop no photo shows has no look to keep, and its picture was pasted as
+            # drawn (a cup held by its side); the keyframe prompt's words draw it better.
+            notes.append(f"PROP PICTURES: {words!r} is in no photo; drawn from its words")
+            continue
         if all(known != w for w, _ in props):
             props.append((known, photo))
     limit = MAX_COMPOSE_REFERENCES - 1 if background is not None else MAX_REFERENCES

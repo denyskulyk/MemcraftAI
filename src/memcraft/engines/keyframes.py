@@ -36,6 +36,11 @@ SAME_SCENE = (
 # alone and empty-handed first, and a prop the story uses is drawn alone; the keyframes take
 # those pictures instead, so the photo's grip and pose do not come back in every keyframe.
 PROP_TAKE = "Take {words} from {image}."
+# Qwen pasted prop pictures as drawn, at their size and angle (E16: a cup held by its side).
+PROP_LOOK = (
+    "{image} shows only the look of {words}: draw it at the size and angle, and in the grip, that "
+    "the pose needs."
+)
 ONCE = "Each person appears exactly once. "
 # Middle and end keyframes drawn as an edit of the start keyframe (when there are asset pictures).
 EDIT_SCENE = (
@@ -197,7 +202,7 @@ def compose_prompt(
     tags = ", ".join(f"<image{i}>" for i in range(2, people + 2))
     keep = "" if camera_moves else ", the camera position and the framing"
     takes = "".join(
-        PROP_TAKE.format(words=words.strip(), image=f"<image{people + 1 + i}>") + " "
+        PROP_LOOK.format(words=words.strip(), image=f"<image{people + 1 + i}>") + " "
         for i, words in enumerate(props, start=1)
     )
     moved = re.sub(r"<image([1-9])>", lambda m: f"<image{int(m.group(1)) + 1}>", action.strip())

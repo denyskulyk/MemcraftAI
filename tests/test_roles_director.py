@@ -888,24 +888,27 @@ def test_the_compose_layout_draws_background_people_and_props_first():
     run_text, calls = runner(COMPOSED)
     plan = direct_keyframes(run_text, kf_prompt(compose=True), [PHOTO], "He flies away")
     assert "CAMERA END:" in calls[0]["system"] and "CLEAN:" not in calls[0]["system"]
-    background, man, umbrella, kite = plan.assets
+    background, man, umbrella = plan.assets  # the kite is in no photo: words only
     assert background.kind == "background" and not background.cutout
     assert background.prompt.startswith("The plain grey <image1> is only the canvas")
     assert "leave out every person" in background.prompt
     assert plan.bible["place"] in background.prompt and plan.bible["camera"] in background.prompt
     assert (man.kind, man.photo, man.cutout) == ("clean", 1, True)
-    assert umbrella.cutout and kite.cutout and kite.photo is None
+    assert umbrella.cutout and umbrella.photo == 1
+    assert "PROP PICTURES: 'a red kite' is in no photo; drawn from its words" in plan.problems
     start, end = plan.keyframes
     for keyframe in (start, end):
-        assert keyframe.references == ["asset:0", "asset:1", "asset:2", "asset:3"]
+        assert keyframe.references == ["asset:0", "asset:1", "asset:2"]
         assert keyframe.layout == "compose" and "start" not in keyframe.references
     assert not start.camera_moves and end.camera_moves
     assert end.action.startswith("Close-up on the man's face from the front.")
     first = start.prompt(plan.bible)
     assert first.startswith("Put the people and objects into the empty place of <image1>")
     assert "the camera position and the framing" in first
-    assert "Take a black umbrella with a curved wooden handle from <image3>." in first
-    assert "Take a red kite from <image4>." in first
+    assert (
+        "<image3> shows only the look of a black umbrella with a curved wooden handle: draw it "
+        "at the size and angle, and in the grip, that the pose needs." in first
+    )
     assert "from <image2>" in first.split("Each person appears exactly once.")[1]
     assert "the camera position and the framing" not in end.prompt(plan.bible)
     output = plan.as_output()
@@ -916,12 +919,14 @@ def test_compose_keeps_props_within_six_pictures():
     answer = THREE_PEOPLE.replace(
         "**KEYFRAME START:**",
         "**PROPS:** a wooden oar | a tiny flag | a duck\n"
-        "**PROP PICTURES:** a wooden oar | a tiny flag | a duck\n**KEYFRAME START:**",
+        "**PROP PICTURES:** a wooden oar from <image1> | a tiny flag from <image2> | a duck"
+        " from <image3>\n**KEYFRAME START:**",
     )
     run_text, _ = runner(answer)
     plan = direct_keyframes(run_text, kf_prompt(compose=True), [PHOTO, PHOTO, PHOTO], "Rowing")
     kinds = [a.kind for a in plan.assets]
-    assert kinds == ["background", "cut", "cut", "cut", "prop", "prop"]
+    # The two props kept come from photos 1 and 2, so those are redrawn empty-handed.
+    assert kinds == ["background", "clean", "clean", "cut", "prop", "prop"]
     assert "PROP PICTURES: 1 left out (at most 2)" in plan.problems
     assert len(plan.keyframes[0].references) == 6
 
