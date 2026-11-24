@@ -851,7 +851,11 @@ def spoken_lines(
         person = mapping.get(tags[-1].group(1).casefold()) if tags else None
         who = person["tag"] if person and person.get("tag") else "someone"
         index = min(len(runs) - 1, int(len(runs) * match.start() / max(1, len(idea))))
-        runs[index] = f'{runs[index].rstrip()} {who[0].upper()}{who[1:]} says "{line}"'
+        others = "the others stay silent with their mouths closed"
+        runs[index] = (
+            f"{runs[index].rstrip()} {who[0].upper()}{who[1:]} looks up, and their lips move as "
+            f'they say "{line}", while {others}.'
+        )
         notes.append(f"RUN {index + 1}: the idea's line {line!r} was missing; added for {who}")
     return runs, notes
 

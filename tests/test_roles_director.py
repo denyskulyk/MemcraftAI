@@ -973,7 +973,8 @@ def test_a_missing_quoted_line_is_added_for_its_speaker():
         idea, ["The troll swings.", 'The soldier says "You good?"'], mapping
     )
     assert runs == [
-        'The troll swings. The blue troll says "Parry this!"',
+        'The troll swings. The blue troll looks up, and their lips move as they say "Parry this!",'
+        " while the others stay silent with their mouths closed.",
         'The soldier says "You good?"',
     ]
     assert notes == ["RUN 1: the idea's line 'Parry this!' was missing; added for the blue troll"]
