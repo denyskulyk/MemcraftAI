@@ -38,7 +38,7 @@ ADAPTERS: dict[str, type[Adapter]] = {
 }
 WORKFLOW_FOLDERS = {
     QwenImageKeyframes.workflow_name: "keyframe-qwen-image-2.1-v4",
-    LtxClips.workflow_name: "clip-ltx-2.5-v1",
+    LtxClips.workflow_name: "clip-ltx-2.5-v2",
 }
 
 
@@ -152,8 +152,9 @@ def plan(
             RunPlan(0, lengths[0], First.KEYFRAME, 0, ((1, middle), (2, LAST)), 1.0, 1, 1, g)
         )
     else:
-        # Run 1 leaves its end free, so it does not freeze before the cut (E0.5).
-        runs.append(RunPlan(0, lengths[0], First.KEYFRAME, 0, ((1, middle),), 1.0, 1, 1, g))
+        # E16: run 1 ends on the middle keyframe (guide 0.5). Its free end (E0.5) let LTX
+        # drift into a close-up, and run 2 had to zoom back out to the end keyframe.
+        runs.append(RunPlan(0, lengths[0], First.KEYFRAME, 0, ((1, LAST),), 1.0, 1, 1, g))
         for i in range(1, count):
             guides = ((2, LAST),) if i == count - 1 else ()
             runs.append(

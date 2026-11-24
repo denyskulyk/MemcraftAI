@@ -60,6 +60,13 @@ class Guide:
     frame: int = LAST
 
 
+# With audio CFG above 1 (clip workflow v2) the negative prompt works on the sound: LTX added
+# music although every run said "No music." (E16).
+MUSIC_NEGATIVE = (
+    "music, background music, soundtrack, melody, song, singing, instruments, watermark, text"
+)
+
+
 @dataclass(frozen=True)
 class ClipRequest:
     prompt: str
@@ -73,7 +80,7 @@ class ClipRequest:
     # 1.0 in keyframe runs and continued runs: the cut between runs jumps less (E0.5).
     first_strength: float = 1.0
     guide_strength: float = 1.0
-    negative_prompt: str = "watermark, text"
+    negative_prompt: str = MUSIC_NEGATIVE
     folder: str = "memcraft"
 
 

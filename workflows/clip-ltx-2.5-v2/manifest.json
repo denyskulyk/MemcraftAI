@@ -1,0 +1,383 @@
+{
+  "format": 1,
+  "name": "clip-ltx-2.5",
+  "version": 2,
+  "source": "LTX-2.5 clip: stage 1 (preview, latents, last frame) and the HD and Full HD releases from saved latents, one set of output nodes per run (e0-spike/flows.py ltx) Audio CFG 2.5 in both LTXVDualCFGGuider nodes (video CFG stays 1), so the negative prompt keeps music out of the sound; renders take about 1.7x as long (E16, Denys heard no music).",
+  "inputs": {
+    "first_frame": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "11",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "required": true
+    },
+    "prompt": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "15",
+          "class_type": "PrimitiveStringMultiline",
+          "input": "value"
+        }
+      ],
+      "required": true
+    },
+    "negative_prompt": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "17",
+          "class_type": "CLIPTextEncode",
+          "input": "text"
+        }
+      ]
+    },
+    "seed": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "44",
+          "class_type": "RandomNoise",
+          "input": "noise_seed"
+        }
+      ],
+      "required": true,
+      "min": 0,
+      "max": 18446744073709551615
+    },
+    "refine_seed": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "80",
+          "class_type": "RandomNoise",
+          "input": "noise_seed"
+        }
+      ],
+      "min": 0,
+      "max": 18446744073709551615
+    },
+    "frames": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "5",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 9,
+      "max": 297
+    },
+    "fps": {
+      "type": "float",
+      "targets": [
+        {
+          "node": "6",
+          "class_type": "PrimitiveFloat",
+          "input": "value"
+        }
+      ],
+      "min": 1,
+      "max": 60
+    },
+    "width": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "1",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 64,
+      "max": 1024
+    },
+    "height": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "2",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 64,
+      "max": 1024
+    },
+    "reference_width": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "3",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 64,
+      "max": 2048
+    },
+    "reference_height": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "4",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 64,
+      "max": 2048
+    },
+    "first_strength": {
+      "type": "float",
+      "targets": [
+        {
+          "node": "32",
+          "class_type": "LTXVImgToVideoInplace",
+          "input": "strength"
+        }
+      ],
+      "min": 0,
+      "max": 1
+    },
+    "guide_strength": {
+      "type": "float",
+      "targets": [
+        {
+          "node": "29",
+          "class_type": "PrimitiveFloat",
+          "input": "value"
+        }
+      ],
+      "min": 0,
+      "max": 10
+    },
+    "guide_1": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "19",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "toggle": {
+        "node": "22",
+        "class_type": "PrimitiveBoolean",
+        "input": "value"
+      },
+      "fallback": "first_frame"
+    },
+    "guide_1_frame": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "23",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": -1,
+      "max": 296
+    },
+    "guide_2": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "24",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "toggle": {
+        "node": "27",
+        "class_type": "PrimitiveBoolean",
+        "input": "value"
+      },
+      "fallback": "first_frame"
+    },
+    "guide_2_frame": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "28",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": -1,
+      "max": 296
+    },
+    "latent_video": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "57",
+          "class_type": "LoadLatent",
+          "input": "latent"
+        }
+      ]
+    },
+    "latent_audio": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "58",
+          "class_type": "LoadLatent",
+          "input": "latent"
+        }
+      ]
+    },
+    "hd_scale": {
+      "type": "float",
+      "targets": [
+        {
+          "node": "63",
+          "class_type": "RTXVideoSuperResolution",
+          "input": "resize_type.scale"
+        }
+      ],
+      "min": 1,
+      "max": 4
+    },
+    "hd_width": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "61",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 64,
+      "max": 4096
+    },
+    "hd_height": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "62",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 64,
+      "max": 4096
+    },
+    "fhd_width": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "86",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 64,
+      "max": 4096
+    },
+    "fhd_height": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "87",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 64,
+      "max": 4096
+    },
+    "preview_prefix": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "54",
+          "class_type": "SaveVideo",
+          "input": "filename_prefix"
+        }
+      ]
+    },
+    "latent_video_prefix": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "49",
+          "class_type": "SaveLatent",
+          "input": "filename_prefix"
+        }
+      ]
+    },
+    "latent_audio_prefix": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "50",
+          "class_type": "SaveLatent",
+          "input": "filename_prefix"
+        }
+      ]
+    },
+    "last_frame_prefix": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "56",
+          "class_type": "SaveImage",
+          "input": "filename_prefix"
+        }
+      ]
+    },
+    "hd_prefix": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "66",
+          "class_type": "SaveVideo",
+          "input": "filename_prefix"
+        }
+      ]
+    },
+    "fhd_prefix": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "91",
+          "class_type": "SaveVideo",
+          "input": "filename_prefix"
+        }
+      ]
+    }
+  },
+  "outputs": {
+    "preview": {
+      "node": "54",
+      "class_type": "SaveVideo"
+    },
+    "latent_video": {
+      "node": "49",
+      "class_type": "SaveLatent"
+    },
+    "latent_audio": {
+      "node": "50",
+      "class_type": "SaveLatent"
+    },
+    "last_frame": {
+      "node": "56",
+      "class_type": "SaveImage"
+    },
+    "hd": {
+      "node": "66",
+      "class_type": "SaveVideo"
+    },
+    "fhd": {
+      "node": "91",
+      "class_type": "SaveVideo"
+    }
+  }
+}

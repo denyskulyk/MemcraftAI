@@ -157,9 +157,9 @@ def test_a_long_video_splits_into_two_runs_that_share_a_frame(frames):
 def test_keyframe_positions():
     assert keyframe_frames([241]) == {"start": 0, "middle": 120, "end": 240}
     assert keyframe_frames([249]) == {"start": 0, "middle": 128, "end": 248}
-    # Long: the middle guides the first run half way, the end is the last frame of the second.
-    assert keyframe_frames([241, 241]) == {"start": 0, "middle": 120, "end": 480}
-    assert keyframe_frames([161, 153]) == {"start": 0, "middle": 80, "end": 312}
+    # Long (E16): the middle is the last frame of the first run, the end of the second.
+    assert keyframe_frames([241, 241]) == {"start": 0, "middle": 240, "end": 480}
+    assert keyframe_frames([161, 153]) == {"start": 0, "middle": 160, "end": 312}
     for frames in range(153, 298, 8):
         assert keyframe_frames([frames])["middle"] % 8 == 0
 
@@ -175,7 +175,10 @@ def test_positions_match_the_engines_plan():
         names = engines.keyframes
         guided = {names[k]: f for run in engines.runs for k, f in run.guides if f != LAST}
         # E16: a short video has no middle keyframe.
-        assert guided == ({"middle": ours["middle"]} if length is LONG else {})
+        # E16: no middle keyframe in a short video; a long one ends run 1 on it.
+        assert guided == {}
+        if length is LONG:
+            assert engines.runs[0].guides == ((1, LAST),) and ours["middle"] == runs[0] - 1
         assert engines.frames == frames and ours["end"] == frames - 1
 
 
@@ -281,7 +284,7 @@ def test_a_short_keyframe_plan():
     assert plan.title == "The Umbrella Lift" and plan.attempts == 1 and plan.seconds == 60
     assert calls[0]["seed"] == 7 and calls[0]["images"] == [PHOTO]
     assert "8 seconds long, made as one run" in calls[0]["system"]
-    assert "No music." in calls[0]["system"] and "no cranes" in calls[0]["system"]
+    assert "Never mention music" in calls[0]["system"] and "no cranes" in calls[0]["system"]
     assert "RUN 1: the whole video" in calls[0]["system"] and "RUN 2" not in calls[0]["system"]
     assert calls[0]["prompt"] == "Idea: He flies away"
     assert plan.bible["people"] == [
@@ -315,7 +318,7 @@ def test_a_short_keyframe_plan():
     assert run.keyframes == [("start", 0), ("end", 240)]
     # Picture tags mean nothing to LTX, and there is never music.
     assert "image" not in run.prompt.lower()
-    assert run.prompt.endswith("Wind howls. No music.")
+    assert run.prompt.endswith("Wind howls.")
     assert len({k.seed for k in plan.keyframes} | {run.seed}) == 3
     assert plan.problems == []
     output = plan.as_output()
@@ -328,10 +331,10 @@ def test_a_long_keyframe_plan_with_two_photos():
     plan = direct_keyframes(run_text, kf_prompt(), [PHOTO, PHOTO], "Ocean", length=LONG)
     assert "made as two runs" in calls[0]["system"]
     assert "RUN 2: continues from the last frame of RUN 1" in calls[0]["system"]
-    assert [k.frame for k in plan.keyframes] == [0, 120, 480]
+    assert [k.frame for k in plan.keyframes] == [0, 240, 480]
     first, second = plan.runs
     assert (first.frames, first.start, first.first) == (241, 0, "keyframe")
-    assert first.keyframes == [("start", 0), ("middle", 120)]
+    assert first.keyframes == [("start", 0), ("middle", 240)]
     assert (second.frames, second.start, second.first) == (241, 240, "previous_last_frame")
     assert second.keyframes == [("end", 240)]
     assert plan.keyframes[0].action.count("<image2>") == 1
@@ -449,7 +452,7 @@ def test_a_single_take():
         }
     ]
     (run,) = plan.runs
-    assert run.frames == 241 and run.start == 0 and run.prompt.endswith("a loud pop. No music.")
+    assert run.frames == 241 and run.start == 0 and run.prompt.endswith("a loud pop.")
     assert '"Fine."' in run.prompt
     assert plan.problems == []
 
@@ -469,11 +472,8 @@ def test_a_long_single_take_continues_from_the_last_frame():
         (297, 0, "photo"),
         (297, 296, "previous_last_frame"),
     ]
-    # The music sentence goes, "No music." comes last.
-    assert [r.prompt for r in plan.runs] == [
-        'He waits. He shouts "Now!" No music.',
-        "He laughs out loud. No music.",
-    ]
+    # The music sentence goes, and music is not named at all (E16).
+    assert [r.prompt for r in plan.runs] == ['He waits. He shouts "Now!"', "He laughs out loud."]
     assert plan.shots == 1 and plan.problems == []
 
 
@@ -496,11 +496,11 @@ def test_multishot_arguments():
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
-        ("He jumps. Upbeat music swells. Glass shatters.", "He jumps. Glass shatters. No music."),
-        ('She yells "Stop!" A musical sting plays.', 'She yells "Stop!" No music.'),
-        ("A soundtrack hums under it all", "No music."),
-        ("Loud crash and laughter.", "Loud crash and laughter. No music."),
-        ("They cheer. No music.", "They cheer. No music."),
+        ("He jumps. Upbeat music swells. Glass shatters.", "He jumps. Glass shatters."),
+        ('She yells "Stop!" A musical sting plays.', 'She yells "Stop!"'),
+        ("A soundtrack hums under it all", ""),
+        ("Loud crash and laughter.", "Loud crash and laughter."),
+        ("They cheer. No music.", "They cheer."),
     ],
 )
 def test_run_prompts_never_ask_for_music(text, expected):
@@ -517,7 +517,9 @@ def test_director_prompts_carry_the_e0_rules(role):
     assert "no knives or blades" in text
     # Loud sound with emotion, never music.
     assert "loud, clear sound effects" in text and "voices with emotion" in text
-    assert "laughing, shouting" in text and "end every" in text and '"No music."' in text
+    assert "laughing, shouting" in text
+    # E16: the keyframe director no longer names music at all; the clip's negative keeps it out.
+    assert "Never mention music" in text or '"No music."' in text
 
 
 # The Qwen text graph
@@ -962,3 +964,16 @@ def test_the_checked_inventory_reaches_the_director_and_decides_the_props():
         "from its words" in plan.problems
     )
     assert [a.kind for a in plan.assets] == ["background", "cut"]
+
+
+def test_a_missing_quoted_line_is_added_for_its_speaker():
+    idea = '<troll> says: "Parry this!". <troll> swings. <pavel> says: "You good?"'
+    mapping = {"troll": {"tag": "the blue troll"}, "pavel": {"tag": "the soldier"}}
+    runs, notes = director.spoken_lines(
+        idea, ["The troll swings.", 'The soldier says "You good?"'], mapping
+    )
+    assert runs == [
+        'The troll swings. The blue troll says "Parry this!"',
+        'The soldier says "You good?"',
+    ]
+    assert notes == ["RUN 1: the idea's line 'Parry this!' was missing; added for the blue troll"]

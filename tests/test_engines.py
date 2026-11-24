@@ -394,8 +394,8 @@ def test_keyframes_plan():
     assert old.runs[0].guides == ((1, 48), (2, -1))
     long = plan(RULES["keyframes"], JobLength.LONG)
     first, second = long.runs
-    # Run 1 keeps its end free; run 2 continues from its real last frame.
-    assert first.guides == ((1, 120),)
+    # E16: run 1 ends on the middle keyframe; run 2 continues from its real last frame.
+    assert first.guides == ((1, -1),)
     assert (second.first, second.guides) == (First.PREVIOUS_LAST_FRAME, ((2, -1),))
     assert all(r.first_strength == 1.0 and r.max_shots == 1 for r in long.runs)
 
@@ -455,7 +455,7 @@ def test_adapter_for_checks_the_stored_content(session):
 def test_plan_with_one_length_per_run():
     long = plan(RULES["keyframes"], JobLength.LONG, frames=[161, 153])
     assert [r.frames for r in long.runs] == [161, 153]
-    assert long.runs[0].guides == ((1, 80),)
+    assert long.runs[0].guides == ((1, -1),)
     assert long.frames == 313
     with pytest.raises(EngineError):
         plan(RULES["multishot"], JobLength.SHORT, frames=[97, 97])

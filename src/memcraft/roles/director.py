@@ -201,10 +201,10 @@ _SENTENCE_END = re.compile(r"(?<=[.!?])\s+|(?<=[.!?][\"”])\s+")
 
 
 def no_music(text: str) -> str:
-    """A run prompt without any sentence that mentions music, ending on "No music."."""
+    """A run prompt without any sentence that mentions music. Since E16 it no longer ends on
+    "No music.": naming music seemed to call it up; the clip's negative prompt keeps it out."""
     sentences = [part for part in _SENTENCE_END.split(text.strip()) if part.strip()]
-    kept = [part for part in sentences if not _MUSIC.search(part)]
-    return " ".join([*kept, NO_MUSIC])
+    return " ".join(part for part in sentences if not _MUSIC.search(part))
 
 
 def run_prompt(text: str) -> str:
@@ -809,11 +809,42 @@ def framed(
     return body
 
 
+_QUOTE = re.compile(r'"([^"]{2,})"|“([^”]{2,})”|«([^»]{2,})»')
+
+
+def _words(text: str) -> str:
+    return " ".join(re.findall(r"\w+", text.lower()))
+
+
+def spoken_lines(
+    idea: str, runs: Sequence[str], mapping: Mapping[str, Mapping[str, Any]]
+) -> tuple[list[str], list[str]]:
+    """Every line the idea puts in quotes, spoken in some run (E16: the director dropped the
+    troll's line and cut the soldier's). A missing line goes into the run at the same place in
+    the story, said by the person the idea names just before it."""
+    runs = list(runs)
+    notes: list[str] = []
+    spoken = " ".join(_words(run) for run in runs)
+    for match in _QUOTE.finditer(idea):
+        line = next(group for group in match.groups() if group).strip()
+        if not _words(line) or _words(line) in spoken:
+            continue
+        before = idea[: match.start()]
+        tags = list(re.finditer(r"<([^<>]+)>", before))
+        person = mapping.get(tags[-1].group(1).casefold()) if tags else None
+        who = person["tag"] if person and person.get("tag") else "someone"
+        index = min(len(runs) - 1, int(len(runs) * match.start() / max(1, len(idea))))
+        runs[index] = f'{runs[index].rstrip()} {who[0].upper()}{who[1:]} says "{line}"'
+        notes.append(f"RUN {index + 1}: the idea's line {line!r} was missing; added for {who}")
+    return runs, notes
+
+
 def keyframe_frames(counts: Sequence[int]) -> dict[str, int]:
     """Where start, middle and end sit in the whole video, as memcraft.engines.plan() guides
-    them: the middle half way through the first run, on a multiple of 8, the end on the last
-    frame. A second run starts from the real last frame of the first and leads to the end."""
-    middle = 8 * round(counts[0] / 16)
+    them. With two runs the middle is the last frame of the first (E16: a free end let the
+    camera drift into a close-up); with one run it would sit half way, on a multiple of 8. The
+    end is the last frame. A second run starts from the real last frame of the first."""
+    middle = counts[0] - 1 if len(counts) > 1 else 8 * round(counts[0] / 16)
     return {"start": 0, "middle": middle, "end": sum(counts) - len(counts)}
 
 
@@ -972,24 +1003,28 @@ def direct_keyframes(
         )
     starts = run_starts(counts)
     runs = []
-    for index, run_count in enumerate(counts):
-        inside = [
-            (at, frame - starts[index])
-            for at, frame in positions.items()
-            if starts[index] <= frame <= starts[index] + run_count - 1
-            and not (index > 0 and frame == starts[index])
-        ]
+    texts: list[str] = []
+    for index, _run_count in enumerate(counts):
         text, replaced = replace_cast_tags(sections[f"RUN {index + 1}"], mapping, with_image=False)
         if replaced:
             problems.append(f"RUN {index + 1}: {replaced} name tags replaced by visual tags")
+        texts.append(text)
+    texts, notes = spoken_lines(idea, texts, mapping)
+    problems += notes
+    for index, run_count in enumerate(counts):
         runs.append(
             Run(
-                prompt=run_prompt(text),
+                prompt=run_prompt(texts[index]),
                 frames=run_count,
                 seed=seeds[3 + index],
                 start=starts[index],
                 first="keyframe" if index == 0 else "previous_last_frame",
-                keyframes=inside,
+                keyframes=[
+                    (at, frame - starts[index])
+                    for at, frame in positions.items()
+                    if starts[index] <= frame <= starts[index] + run_count - 1
+                    and not (index > 0 and frame == starts[index])
+                ],
             )
         )
     return KeyframePlan(

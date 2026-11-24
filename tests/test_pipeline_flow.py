@@ -479,7 +479,8 @@ def test_short_one_photo_without_idea_to_release(engine, session, store, fakes):
     assert row.regime is JobRegime.MULTISHOT and row.recipe_id and row.critic_engine_id
     (request,) = fakes.adapters.clips
     assert request.frames == 241 and request.first_strength == 0.7 and request.guides == ()
-    assert request.prompt.endswith("Single take, no cuts. No music.")
+    assert request.prompt.endswith("Single take, no cuts.")
+    assert "music" in request.negative_prompt  # E16: kept out of the sound by audio CFG
     assert request.folder == folder_of(job.id)
     (preview,) = assets(session, job, AssetKind.PREVIEW)
     assert preview.store is AssetStore.SHARED
@@ -578,7 +579,7 @@ def test_long_one_photo_joins_two_runs(engine, session, store, fakes):
     clip0 = output(session, job, StepName.CLIP, 0)
     last = session.get(Asset, uuid.UUID(clip0["last_frame"]))
     assert second.first_frame == store.path_for(last) and second.first_strength == 1.0
-    assert [g.frame for g in first.guides] == [120]  # run 1 leaves its end free
+    assert [g.frame for g in first.guides] == [-1]  # E16: run 1 ends on the middle keyframe
     assert [g.frame for g in second.guides] == [-1]  # the plan's end guide
     joined = output(session, job, StepName.JOIN)
     assert joined["frames"] == 481 and joined["run_frames"] == [241, 241]
