@@ -77,7 +77,7 @@ from memcraft.models import (
 from memcraft.photos import list_photos, make_gemma_copies
 from memcraft.pipeline import choices, media
 from memcraft.pipeline.regime import regime_for
-from memcraft.roles.chat import record_idea, run_chat
+from memcraft.roles.chat import record_idea, run_chat, user_idea
 from memcraft.roles.critic import Critic, pinned_critic
 from memcraft.roles.director import (
     direct_keyframes,
@@ -104,6 +104,9 @@ KEYFRAME_NAMES = ("start", "middle", "end")
 # Keyframe ordinals from ASSET_ORDINAL (memcraft.models) on are the scenario's asset pictures.
 # The critic sees every picture at the size E0.14 tested.
 CRITIC_SIZE = (540, 960)
+# Prop and people pictures that are cut out of their grey background: 8 Qwen-Image steps
+# looked the same as 16 and take 20 s instead of 38-42 s (2026-11-24 test).
+CUTOUT_STEPS = 8
 FPS = 30
 
 PNG = "image/png"
@@ -326,7 +329,8 @@ def _row(ctx: StepContext) -> JobStep:
 
 @dataclass
 class IdeaStep:
-    """Gemma reads the photos and understands the friend's idea, or proposes one."""
+    """The friend's own idea is kept as typed, without Gemma; with no idea, Gemma reads the
+    photos and proposes one."""
 
     deps: Deps
     needs_gpu: bool = False
@@ -337,6 +341,11 @@ class IdeaStep:
         session = ctx.session
         job = session.get_one(Job, ctx.job_id)
         idea, length = job.idea_text, job.length
+        if idea and idea.strip():
+            row = record_idea(session, ctx.job_id, user_idea(idea), None)
+            row.approved_at = func.now()  # the friend's own idea needs no approval
+            session.flush()
+            return {"idea_id": str(row.id), "proposed_by": IdeaSource.USER.value, "skipped": True}
         ctx.progress(0.05)
         images = gemma_images(session, self.deps.store, ctx.job_id)
         prompt = active_prompt(session, PromptRole.CHAT, GEMMA)
@@ -585,6 +594,11 @@ class KeyframeStep:
                 folder=folder_of(ctx.job_id),
                 cutout=bool(is_asset and keyframe.get("cutout")),
                 cut_only=is_asset and keyframe.get("kind") == "cut",
+                **(
+                    {"steps": CUTOUT_STEPS}
+                    if is_asset and keyframe.get("cutout") and keyframe.get("kind") != "cut"
+                    else {}
+                ),
                 **(
                     {"negative_prompt": BACKGROUND_NEGATIVE}
                     if is_asset and keyframe.get("kind") == "background"

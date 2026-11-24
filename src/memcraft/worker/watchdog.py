@@ -24,7 +24,9 @@ from urllib.parse import urlsplit
 log = logging.getLogger(__name__)
 
 NOT_OURS = frozenset({8188, 8080})
-STALL_LIMIT = 300.0
+# 120 s since 2026-11-24 (was 300): the longest quiet start in the logs was about 15 s,
+# and a hung keyframe cost a job 5 minutes of waiting. A busy GPU still gets 360 s.
+STALL_LIMIT = 120.0
 ANSWER_LIMIT = 60.0
 CHECK_EVERY = 5.0
 # Below this GPU utilisation, in percent, the GPU counts as idle.

@@ -13,7 +13,7 @@ from memcraft.models import (
     PromptVersion,
     User,
 )
-from memcraft.roles.chat import build, record_idea, run_chat, schema
+from memcraft.roles.chat import build, record_idea, run_chat, schema, user_idea
 from memcraft.roles.gemma import GemmaClient, GemmaError
 from memcraft.roles.seed import read_prompt, seed_prompts
 
@@ -30,14 +30,14 @@ def client(*answers):
 
 
 def test_with_an_idea_there_is_no_idea_field():
-    assert list(schema(True)["properties"]) == ["understood", "weakness", "score"]
-    assert list(schema(False)["properties"]) == ["idea", "weakness", "score"]
+    assert list(schema(True)["properties"]) == ["understood", "weakness"]
+    assert list(schema(False)["properties"]) == ["idea", "weakness"]
 
 
 def test_the_prompt_asks_for_what_the_mode_needs():
     system, user = build(prompt(), "He juggles teacups", JobLength.SHORT)
     assert "understood:" in system and "propose your own" not in system
-    assert "5 to 10 seconds" in system and "weakness" in system and '"He waves" = 1' in system
+    assert "5 to 10 seconds" in system and "weakness" in system and "score" not in system
     assert user == "The user's idea: He juggles teacups"
     system, user = build(prompt(), "  ", JobLength.LONG)
     assert "propose your own" in system and "10 to 20 seconds" in system
@@ -45,21 +45,17 @@ def test_the_prompt_asks_for_what_the_mode_needs():
 
 
 def test_a_user_idea_is_kept_word_for_word():
-    gemma, server = client(
-        reply({"understood": "He juggles\nteacups.", "weakness": "Seen it.", "score": 4})
-    )
+    gemma, server = client(reply({"understood": "He juggles\nteacups.", "weakness": "Seen it."}))
     result = run_chat(gemma, prompt(), [JPEG], " He juggles teacups ")
     assert result.idea == "He juggles teacups"
     assert result.understood == "He juggles teacups."
-    assert (result.score, result.reason, result.proposed_by) == (4, "Seen it.", IdeaSource.USER)
+    assert (result.reason, result.proposed_by) == ("Seen it.", IdeaSource.USER)
     assert result.prompt_tokens == 123
     assert server.calls[0][1]["max_tokens"] == 400
 
 
 def test_without_an_idea_gemma_proposes_one():
-    gemma, _ = client(
-        reply({"idea": "The toaster files a complaint.", "weakness": "Odd.", "score": 6})
-    )
+    gemma, _ = client(reply({"idea": "The toaster files a complaint.", "weakness": "Odd."}))
     result = run_chat(gemma, prompt(), [JPEG, JPEG], None)
     assert result.idea == result.understood == "The toaster files a complaint."
     assert result.proposed_by is IdeaSource.GEMMA
@@ -69,10 +65,9 @@ def test_without_an_idea_gemma_proposes_one():
 @pytest.mark.parametrize(
     "data",
     [
-        {"understood": "x", "weakness": "y", "score": 11},
-        {"understood": "x", "weakness": "y", "score": "5"},
-        {"understood": "", "weakness": "y", "score": 5},
-        {"idea": "x", "weakness": "y", "score": 5},
+        {"understood": "x", "weakness": ""},
+        {"understood": "", "weakness": "y"},
+        {"idea": "x", "weakness": "y"},
     ],
 )
 def test_answers_outside_the_schema_are_refused(data):
@@ -103,11 +98,35 @@ def test_the_idea_records_its_prompt(session):
     job = Job(owner_id=user.id, photo_count=1, length=JobLength.SHORT, quality=JobQuality.HD720)
     session.add(job)
     session.flush()
-    gemma, _ = client(reply({"idea": "A pigeon audits the bench.", "weakness": "w", "score": 5}))
+    gemma, _ = client(reply({"idea": "A pigeon audits the bench.", "weakness": "w"}))
     result = run_chat(gemma, stored, [JPEG])
     idea = record_idea(session, job.id, result, stored)
     assert idea.prompt_version_id == stored.id
-    assert (idea.text, idea.score, idea.proposed_by) == ("A pigeon audits the bench.", 5, "gemma")
+    assert (idea.text, idea.score, idea.proposed_by) == (
+        "A pigeon audits the bench.",
+        None,
+        "gemma",
+    )
+
+
+def test_a_user_idea_is_kept_as_typed_without_gemma(session):
+    user = User(tailscale_login=uuid.uuid4().hex)
+    session.add(user)
+    session.flush()
+    job = Job(owner_id=user.id, photo_count=1, length=JobLength.SHORT, quality=JobQuality.HD720)
+    session.add(job)
+    session.flush()
+    idea = record_idea(session, job.id, user_idea("  He juggles teacups "), None)
+    assert (idea.text, idea.understood, idea.score, idea.reason) == (
+        "He juggles teacups",
+        None,
+        None,
+        "",
+    )
+    assert idea.prompt_version_id is None
+    assert idea.proposed_by == "user"
+    with pytest.raises(ValueError):
+        user_idea("   ")
 
 
 def test_long_text_is_cut_after_a_sentence_or_word():
@@ -139,7 +158,7 @@ def test_a_full_length_idea_reaches_gemma_whole():
 
     idea = long_idea(size=MAX_IDEA)
     assert len(idea) == MAX_IDEA == 1000
-    gemma, server = client(reply({"understood": "u", "weakness": "w", "score": 5}))
+    gemma, server = client(reply({"understood": "u", "weakness": "w"}))
     run_chat(gemma, prompt(), [JPEG], idea, cast=CAST)
     body = server.calls[0][1]
     text = body["messages"][1]["content"][-1]["text"]

@@ -5,10 +5,7 @@ The user gives an idea. understood: one or two sentences on what will happen, ex
 === without_idea ===
 The user gives no idea. idea: propose your own funny idea, at most two sentences, that uses what is visible in the photos.
 === score ===
-Then score the idea AS WRITTEN, not what it could become, like a tired comedy editor who has seen everything. First write weakness: its biggest problem in one line. Then the score.
-1-2: nothing happens. 3-4: predictable or random, or not tied to the photo. 5-6: one clear gag, seen before. 7-8: a twist tied to these people or this place. 9-10: almost never.
-Examples: "He waves" = 1. "She eats a sandwich" = 2. "He dances in the kitchen" = 3. "He slips on a banana peel" = 4. "His dog drives the car" = 5. "His mirror image refuses to copy him and leaves the room" = 7. "The statue he poses next to copies his pose to impress its statue wife" = 8.
-Before you answer, compare with these examples and pick the nearest.
+Then write weakness: the idea's biggest problem in one line, as a tired comedy editor who has seen everything would put it.
 === user_with_idea ===
 The user's idea: $idea
 === user_without_idea ===

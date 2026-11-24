@@ -102,7 +102,7 @@ class IdeaOut(_Out):
     text: str
     # How the app understood the friend's own idea.
     understood: str | None = None
-    score: int
+    score: int | None = None
     # The app's understanding of the idea, or why it suggests this one.
     reason: str
     proposed_by: IdeaSource

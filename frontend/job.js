@@ -87,16 +87,16 @@ function showIdea(job) {
   $("idea-box").hidden = !idea && !job.idea_text;
   if (idea) {
     const mine = idea.proposed_by === "user";
-    $("idea-title").textContent = mine ? "Your idea, as the app understood it" : "The app's idea";
+    $("idea-title").textContent = mine ? "Your idea" : "The app's idea";
     $("idea-text").textContent = withNames(idea.text, job.cast);
-    $("idea-score").textContent = "Fun guess: " + idea.score + " / 10";
-    // The idea is shown above in full; this line is only the app's note on it.
-    $("idea-reason").textContent = "Weak spot: " + withNames(idea.reason, job.cast);
+    // Ideas are no longer scored; a friend's own idea also has no note.
+    $("idea-score").textContent = "";
+    $("idea-reason").textContent = idea.reason ? "Weak spot: " + withNames(idea.reason, job.cast) : "";
   } else if (job.idea_text) {
     $("idea-title").textContent = "Your idea";
     $("idea-text").textContent = withNames(job.idea_text, job.cast);
     $("idea-score").textContent = "";
-    $("idea-reason").textContent = "The app is reading your idea.";
+    $("idea-reason").textContent = "";
   }
   $("decide").hidden = job.status !== "awaiting_approval" || !idea;
 }

@@ -1,8 +1,8 @@
-"""The chat agent: Gemma reads the photos, understands or proposes the idea, and scores it.
+"""The chat agent: Gemma reads the photos and proposes an idea when the friend gave none.
 
-With a user idea the answer has no "idea" field, so Gemma cannot rewrite the idea (it did in
-E0); the idea stays the user's words. "weakness" comes before "score" so that the score
-follows from it, and calibration examples in the prompt keep the scale honest.
+Since 2026-11-24 a friend's own idea skips Gemma (memcraft.pipeline.steps.IdeaStep keeps it as
+typed, see user_idea), and ideas are no longer scored: the answer is the idea and its weakness.
+run_chat still handles a user idea ("understood", never a rewrite of it) for older callers.
 """
 
 from __future__ import annotations
@@ -35,7 +35,6 @@ class ChatResult:
     idea: str
     # How Gemma understood a user idea; the idea itself when Gemma proposed it.
     understood: str
-    score: int
     reason: str
     proposed_by: IdeaSource
     seconds: float
@@ -55,7 +54,6 @@ def schema(has_idea: bool) -> dict[str, Any]:
         {
             ("understood" if has_idea else "idea"): text,
             "weakness": {"type": "string", "maxLength": MAX_REASON},
-            "score": {"type": "integer", "minimum": 1, "maximum": 10},
         }
     )
 
@@ -115,19 +113,17 @@ def run_chat(
     answer = client.ask(system, user, photos, schema(has_idea), max_tokens=MAX_TOKENS, seed=seed)
     data = answer.data
     try:
-        score = data["score"]
         reason = one_line(data["weakness"], MAX_REASON)
         said = one_line(
             data["understood" if has_idea else "idea"], MAX_UNDERSTOOD if has_idea else MAX_IDEA
         )
     except KeyError as error:
         raise GemmaError(f"Gemma's answer lacks {error}") from error
-    if type(score) is not int or not 1 <= score <= 10 or not said or not reason:
+    if not said or not reason:
         raise GemmaError("Gemma's answer does not fit the schema")
     return ChatResult(
         idea=(idea or "").strip() if has_idea else said,
         understood=said,
-        score=score,
         reason=reason,
         proposed_by=IdeaSource.USER if has_idea else IdeaSource.GEMMA,
         seconds=answer.seconds,
@@ -136,19 +132,28 @@ def run_chat(
     )
 
 
+def user_idea(idea: str) -> ChatResult:
+    """The friend's own idea as typed, without Gemma: no understanding, no weakness."""
+    text = idea.strip()
+    if not text:
+        raise ValueError("user_idea needs the friend's idea")
+    return ChatResult(idea=text, understood="", reason="", proposed_by=IdeaSource.USER, seconds=0.0)
+
+
 def record_idea(
-    session: Session, job_id: uuid.UUID, result: ChatResult, prompt: PromptVersion
+    session: Session, job_id: uuid.UUID, result: ChatResult, prompt: PromptVersion | None
 ) -> Idea:
-    """The Idea row, with the prompt it came from pinned. The caller commits."""
+    """The Idea row, with the prompt it came from pinned (none when Gemma did not run).
+    The caller commits."""
     idea = Idea(
         job_id=job_id,
         text=result.idea,
-        understood=result.understood if result.proposed_by == IdeaSource.USER else None,
-        score=result.score,
+        understood=(result.understood or None) if result.proposed_by == IdeaSource.USER else None,
         reason=result.reason,
         proposed_by=result.proposed_by,
     )
     session.add(idea)
     session.flush()
-    pin_idea(session, idea, prompt)
+    if prompt is not None:
+        pin_idea(session, idea, prompt)
     return idea

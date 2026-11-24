@@ -353,7 +353,8 @@ class Idea(Base):
     text: Mapped[str]
     # How the chat agent understood the friend's own idea; empty for its own ideas.
     understood: Mapped[str | None]
-    score: Mapped[int]
+    # Null since 2026-11-24: ideas are no longer scored. Older rows keep their 1-10.
+    score: Mapped[int | None]
     reason: Mapped[str]
     proposed_by: Mapped[IdeaSource] = mapped_column(_text_enum(IdeaSource, "proposed_by"))
     prompt_version_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("prompt_versions.id"))

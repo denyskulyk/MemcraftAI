@@ -70,6 +70,18 @@ def test_migration_matches_models():
         [created] = [s for s in migrated if f"CREATE TABLE {table} (" in s]
         migrated.remove(created)
         migrated.add(tuple(sorted((*created, column))))
+    # A column made optional later loses its NOT NULL in the statement that created it.
+    for table, column in re.findall(r"ALTER TABLE (\w+) ALTER COLUMN (\w+) DROP NOT NULL;", sql):
+        [created] = [s for s in migrated if f"CREATE TABLE {table} (" in s]
+        migrated.remove(created)
+        migrated.add(
+            tuple(
+                sorted(
+                    x.removesuffix(" NOT NULL") if x.startswith(f"{column} ") else x
+                    for x in created
+                )
+            )
+        )
     dialect = postgresql.dialect()
     ddl = []
     for table in Base.metadata.sorted_tables:
