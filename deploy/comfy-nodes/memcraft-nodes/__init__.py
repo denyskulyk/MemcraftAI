@@ -15,7 +15,8 @@ class GuiderLTXAVDualCFGUntil(Guider_LTXAVDualCFG):
     def set_until(self, until):
         self.until = float(until)
 
-    def predict_noise(self, x, timestep, model_options={}, seed=None):
+    def predict_noise(self, x, timestep, model_options=None, seed=None):
+        model_options = model_options or {}
         sigma = float(timestep.max())
         if sigma > self.until + 1e-4:
             self.cfg = max(self.video_cfg, self.audio_cfg)
