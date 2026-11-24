@@ -691,7 +691,9 @@ def test_compose_draws_the_pieces_and_never_reuses_the_start_keyframe(
     background, first, second, log, start, end = fakes.adapters.keyframes
     assert background.prompt.startswith("The plain grey <image1>") and not background.cutout
     assert "people" in background.negative_prompt and "people" not in start.negative_prompt
-    assert first.cutout and second.cutout and log.cutout
+    # The photo holding the log is redrawn empty-handed; the other one is cut out as it is.
+    assert first.cutout and not first.cut_only and log.cutout
+    assert second.cut_only and not second.cutout
     drawn = {a.ordinal: store.path_for(a) for a in assets(session, job, AssetKind.KEYFRAME)}
     pieces = (drawn[200], drawn[201], drawn[202], drawn[203])
     assert start.photos == pieces and end.photos == pieces

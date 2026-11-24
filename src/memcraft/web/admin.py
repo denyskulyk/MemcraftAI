@@ -542,9 +542,14 @@ def _picture_label(ordinal: int, scenario: dict[str, Any]) -> tuple[str, str | N
         index = ordinal - ASSET_ORDINAL
         asset = assets[index] if index < len(assets) else {}
         kind = asset.get("kind", "picture")
-        name = {"background": "background", "clean": "character", "prop": "prop"}.get(kind, kind)
+        name = {
+            "background": "background",
+            "cut": "character (photo cut out)",
+            "clean": "character (redrawn empty-handed)",
+            "prop": "prop",
+        }.get(kind, kind)
         detail = asset.get("words") or ""
-        if kind == "clean" and asset.get("photo"):
+        if kind in ("cut", "clean") and asset.get("photo"):
             detail = f"photo {asset['photo']}"
         return f"{name}: {detail}".rstrip(": "), asset.get("prompt")
     if ordinal >= 100:

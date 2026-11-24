@@ -454,6 +454,7 @@ class KeyframeStep:
                 extra_references=extra,
                 folder=folder_of(ctx.job_id),
                 cutout=bool(is_asset and keyframe.get("cutout")),
+                cut_only=is_asset and keyframe.get("kind") == "cut",
                 **(
                     {"negative_prompt": BACKGROUND_NEGATIVE}
                     if is_asset and keyframe.get("kind") == "background"

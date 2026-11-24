@@ -125,6 +125,8 @@ class KeyframeRequest:
     folder: str = "memcraft"
     # Cut the drawn picture out of its background (BiRefNet) and save it as RGBA (E16).
     cutout: bool = False
+    # Draw nothing: cut image_1 out as it is, so a person keeps the photo's face 1:1 (E16).
+    cut_only: bool = False
 
     @property
     def references(self) -> tuple[Path, ...]:
@@ -269,6 +271,10 @@ class QwenImageKeyframes(Adapter):
             "prefix": f"{request.folder}/keyframe",
         }
         # A workflow version from before reference_width draws every reference at the canvas.
+        if request.cut_only:
+            if "cut_only" not in self.manifest.inputs:
+                raise LimitError("this keyframe workflow cannot cut a photo out")
+            values["cut_only"] = True
         if request.cutout:
             if "cutout" not in self.manifest.inputs:
                 raise LimitError("this keyframe workflow cannot cut pictures out")

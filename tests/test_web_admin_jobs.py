@@ -316,7 +316,7 @@ def test_the_debug_drawer_lists_pictures_with_labels_and_prompts(client, engine,
     labels = [p["label"] for p in data["pictures"]]
     assert labels == [
         "background",
-        "character: photo 1",
+        "character (redrawn empty-handed): photo 1",
         "prop: a log",
         "keyframe start",
         "keyframe end",

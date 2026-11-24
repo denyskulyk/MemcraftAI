@@ -417,8 +417,9 @@ class Keyframe:
 
 @dataclass(frozen=True)
 class AssetPicture:
-    """A picture drawn before the keyframes (E16): ``kind`` "clean" is photo ``photo`` with
-    its people alone and empty-handed, "prop" is one prop alone, from photo ``photo`` or, with
+    """A picture drawn before the keyframes (E16): ``kind`` "cut" is photo ``photo`` cut out as it
+    is (nothing drawn), "clean" photo ``photo`` redrawn with its people alone and empty-handed,
+    "prop" is one prop alone, from photo ``photo`` or, with
     None, drawn on a plain grey canvas, "background" the empty place on that canvas. With
     ``cutout`` it is cut out of its background and kept as RGBA."""
 
@@ -589,6 +590,8 @@ OPTIONAL_KEYFRAME_LABELS = ("PROPS", "CLEAN", "PROP PICTURES", "CAMERA MIDDLE", 
 MAX_PROP_PICTURES = 2
 MAX_REFERENCES = 4
 MAX_COMPOSE_REFERENCES = 6
+# The prompt of a photo cut out as it is; the workflow draws nothing for it.
+CUT_ONLY = "Cut out the people of <image1> as they are."
 _SAME_CAMERA = re.compile(r"^(?:same|unchanged|no change|static|none|-)\b", re.I)
 
 
@@ -655,6 +658,7 @@ def asset_pictures(
         props = props[:room]
     # A prop drawn from a photo is in someone's hands there (the troll's log): that photo is
     # drawn clean too, or its grip comes back next to the prop picture (E16, real run).
+    holding = {photo for _, photo in props if photo is not None}
     for _, photo in props:
         if photo is not None and photo not in numbers:
             numbers.append(photo)
@@ -671,6 +675,11 @@ def asset_pictures(
             for p in bible["people"]
             if p.get("image") == number and p.get("tag")
         )
+        if background is not None and number not in holding:
+            # E16, Denys: the photo itself, cut out by BiRefNet, so the face stays 1:1. Only a
+            # photo that holds a prop with its own picture is redrawn empty-handed by Qwen.
+            pictures.append(AssetPicture("cut", number, looks, seeds.pop(0), CUT_ONLY))
+            continue
         text = CLEAN_PERSON.format(looks=looks or "people or animals")
         pictures.append(AssetPicture("clean", number, looks, seeds.pop(0), text, cut))
     for words, photo in props:

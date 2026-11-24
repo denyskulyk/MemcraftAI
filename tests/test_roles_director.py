@@ -921,7 +921,7 @@ def test_compose_keeps_props_within_six_pictures():
     run_text, _ = runner(answer)
     plan = direct_keyframes(run_text, kf_prompt(compose=True), [PHOTO, PHOTO, PHOTO], "Rowing")
     kinds = [a.kind for a in plan.assets]
-    assert kinds == ["background", "clean", "clean", "clean", "prop", "prop"]
+    assert kinds == ["background", "cut", "cut", "cut", "prop", "prop"]
     assert "PROP PICTURES: 1 left out (at most 2)" in plan.problems
     assert len(plan.keyframes[0].references) == 6
 
