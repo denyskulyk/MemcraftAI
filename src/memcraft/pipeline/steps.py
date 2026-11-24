@@ -43,6 +43,7 @@ from sqlalchemy.orm import Session
 from memcraft import versions
 from memcraft.comfy import Progress
 from memcraft.engines import (
+    BACKGROUND_NEGATIVE,
     LAST,
     ClipRequest,
     First,
@@ -453,6 +454,11 @@ class KeyframeStep:
                 extra_references=extra,
                 folder=folder_of(ctx.job_id),
                 cutout=bool(is_asset and keyframe.get("cutout")),
+                **(
+                    {"negative_prompt": BACKGROUND_NEGATIVE}
+                    if is_asset and keyframe.get("kind") == "background"
+                    else {}
+                ),
             )
             with deps.comfy.client() as client:
                 result = adapter.render(

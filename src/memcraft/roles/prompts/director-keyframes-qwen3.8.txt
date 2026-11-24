@@ -47,4 +47,4 @@ With a CAST:
 - Never write the CAST tags (the names in angle brackets) in your answer. In keyframes name each person "the <visual tag> from <imageN>". In the RUNs name each person only by the visual tag from PEOPLE, because the video model does not know names: speech goes with the visual tag, like: the man in the red jacket says "Hi!".
 - Keep the spoken words as the idea gives them.
 === background ===
-Replace <image1> completely with a photo of an empty place: $place $light $camera Nobody is in the picture: no people, no creatures, no animals and nothing in the foreground.
+The plain grey <image1> is only the canvas: paint over all of it a photo of an empty place: $place $light The camera, for framing only: $camera The place is empty: leave out every person, creature or animal the camera sentence mentions, and nothing stands in the foreground.

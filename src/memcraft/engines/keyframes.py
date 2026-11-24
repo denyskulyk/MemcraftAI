@@ -61,6 +61,12 @@ PROP_NEW = (
 )
 # Pixels of image_2 to image_4; image_1 is drawn at the canvas size.
 REFERENCE_PIXELS = 512 * 896
+# The empty place of the background-first layout: the director's camera sentence names the
+# people ("capturing both men"), and Qwen drew them (E16).
+BACKGROUND_NEGATIVE = (
+    "people, person, man, woman, child, crowd, figure, creature, animal, face, body, "
+    "blurry, low quality, text, watermark, frame"
+)
 DEFAULT_NEGATIVE = (
     "blurry, low quality, deformed face, extra fingers, different person, text, watermark, frame"
 )

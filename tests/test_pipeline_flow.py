@@ -689,7 +689,8 @@ def test_compose_draws_the_pieces_and_never_reuses_the_start_keyframe(
     worker(engine, fakes, store).drain()
     assert status_of(session, job) is S.PREVIEW_READY
     background, first, second, log, start, end = fakes.adapters.keyframes
-    assert background.prompt.startswith("Replace <image1> completely") and not background.cutout
+    assert background.prompt.startswith("The plain grey <image1>") and not background.cutout
+    assert "people" in background.negative_prompt and "people" not in start.negative_prompt
     assert first.cutout and second.cutout and log.cutout
     drawn = {a.ordinal: store.path_for(a) for a in assets(session, job, AssetKind.KEYFRAME)}
     pieces = (drawn[200], drawn[201], drawn[202], drawn[203])

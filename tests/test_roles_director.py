@@ -890,9 +890,8 @@ def test_the_compose_layout_draws_background_people_and_props_first():
     assert "CAMERA END:" in calls[0]["system"] and "CLEAN:" not in calls[0]["system"]
     background, man, umbrella, kite = plan.assets
     assert background.kind == "background" and not background.cutout
-    assert background.prompt.startswith(
-        "Replace <image1> completely with a photo of an empty place"
-    )
+    assert background.prompt.startswith("The plain grey <image1> is only the canvas")
+    assert "leave out every person" in background.prompt
     assert plan.bible["place"] in background.prompt and plan.bible["camera"] in background.prompt
     assert (man.kind, man.photo, man.cutout) == ("clean", 1, True)
     assert umbrella.cutout and kite.cutout and kite.photo is None

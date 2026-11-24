@@ -29,6 +29,7 @@ from memcraft.engines.clips import (
     ReleaseResult,
 )
 from memcraft.engines.keyframes import (
+    BACKGROUND_NEGATIVE,
     CLEAN_PERSON,
     PROP_FROM_PHOTO,
     PROP_NEW,
@@ -57,6 +58,7 @@ from memcraft.engines.recipes import (
 
 __all__ = [
     "ADAPTERS",
+    "BACKGROUND_NEGATIVE",
     "CLEAN_PERSON",
     "LAST",
     "PROP_FROM_PHOTO",
