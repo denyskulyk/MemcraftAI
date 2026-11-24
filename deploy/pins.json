@@ -111,6 +111,11 @@
       "folder": "vae",
       "size": 675509688,
       "sha256": "bb21f7473051e1ac368515dd3f2e15cd44d7a11748ee8823e1ddca3e4876b7c9"
+    },
+    "sam3.1_multiplex_fp16.safetensors": {
+      "folder": "checkpoints",
+      "size": 1745546848,
+      "sha256": "9ba99c92703c2e8b4f47de2d34a539bb8e18923049e238b780d70dbe6368eb03"
     }
   }
 }

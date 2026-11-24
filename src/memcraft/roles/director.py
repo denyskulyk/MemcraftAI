@@ -595,6 +595,81 @@ CUT_ONLY = "Cut out the people of <image1> as they are."
 _SAME_CAMERA = re.compile(r"^(?:same|unchanged|no change|static|none|-)\b", re.I)
 
 
+_INVENTORY_LINE = re.compile(r"<image([1-9])>\s*:\s*(.*?)\|\s*holds?\s*:\s*(.*)", re.I)
+_NOTHING = re.compile(r"^(?:nothing|none|no(?:thing)? objects?|empty|-|n/?a)\.?$", re.I)
+
+
+def parse_inventory(text: str, photos: int) -> list[dict[str, Any]]:
+    """The inventory answer as one entry per photo: who is in it and what they hold."""
+    found: dict[int, dict[str, Any]] = {}
+    clean = _FENCE.sub("", _THINK.sub("", text))
+    for line in clean.splitlines():
+        match = _INVENTORY_LINE.search(image_tags(line))
+        if not match:
+            continue
+        number = int(match.group(1))
+        if not 1 <= number <= photos or number in found:
+            continue
+        items = [
+            " ".join(item.split()).strip(" .;\"'*").lower()
+            for item in re.split(r"[,;]| and ", match.group(3))
+        ]
+        items = [re.sub(r"^(?:a|an|the|some|two|his|her|their)\s+", "", item) for item in items]
+        holds = [item for item in items if item and not _NOTHING.match(item)][:3]
+        found[number] = {"photo": number, "who": match.group(2).strip(" *"), "holds": holds}
+    return [found.get(n, {"photo": n, "who": "", "holds": []}) for n in range(1, photos + 1)]
+
+
+def take_inventory(
+    run_text: TextRunner, prompt: PromptVersion, photos: Sequence[bytes], seed: int = 7
+) -> tuple[list[dict[str, Any]], str]:
+    """E16: before the director, Qwen 3.8 lists what each photo's people hold; the pipeline
+    then checks every object with SAM. Returns the entries and the raw answer."""
+    found = parts(prompt.text, prompt_file(PromptRole.DIRECTOR_KEYFRAMES, QWEN).parts)
+    raw = run_text(found["inventory"], f"Photos: {len(photos)}", list(photos), seed)
+    return parse_inventory(raw, len(photos)), raw
+
+
+def held_text(found: dict[str, str], inventory: Sequence[Mapping[str, Any]]) -> str:
+    """The checked inventory for the director's user prompt; only confirmed objects count."""
+    lines = []
+    for entry in inventory:
+        held = [item for item, ok in entry.get("checked", {}).items() if ok]
+        what = ", ".join(f"a {item}" for item in held) if held else "nothing"
+        lines.append(f"<image{entry['photo']}>: holds {what}")
+    return fill(found["held"], {"lines": "\n".join(lines)})
+
+
+def confirmed_holds(inventory: Sequence[Mapping[str, Any]] | None) -> dict[int, list[str]] | None:
+    if inventory is None:
+        return None
+    return {
+        int(entry["photo"]): [item for item, ok in entry.get("checked", {}).items() if ok]
+        for entry in inventory
+    }
+
+
+def _held(
+    photo: int,
+    words: str,
+    held: Mapping[int, Sequence[str]],
+    confirm: Callable[[int, str], bool] | None,
+) -> bool:
+    """Whether a prop the director says comes from ``photo`` is held there. With ``confirm``
+    (SAM on the photo, E16) its own words are looked for, since Qwen may call the same log a
+    stick in the inventory; without it the words must share one with a checked object."""
+    if not held.get(photo):
+        return False
+    if confirm is not None:
+        return confirm(photo, words)
+    return _matches(words, held[photo])
+
+
+def _matches(words: str, items: Sequence[str]) -> bool:
+    tokens = set(re.findall(r"[a-z]+", words.lower()))
+    return any(set(re.findall(r"[a-z]+", item.lower())) & tokens for item in items)
+
+
 def camera_for(value: str, start: str) -> tuple[str, bool]:
     """A keyframe's camera sentence from CAMERA MIDDLE or CAMERA END, and whether it moved:
     "same" (or nothing) repeats the start CAMERA word for word."""
@@ -621,6 +696,8 @@ def asset_pictures(
     seed: int,
     *,
     background: str | None = None,
+    held: Mapping[int, Sequence[str]] | None = None,
+    confirm: Callable[[int, str], bool] | None = None,
 ) -> tuple[list[AssetPicture], list[str]]:
     """The pictures to draw before the keyframes, from the CLEAN and PROP PICTURES sections,
     and notes on what was left out.
@@ -641,6 +718,10 @@ def asset_pictures(
         photo = int(found.group(1)) if found else None
         words = (part[: found.start()] + part[found.end() :]).strip(" ,.") if found else part
         if photo is not None and not 1 <= photo <= photos:
+            photo = None
+        if photo is not None and held is not None and not _held(photo, words, held, confirm):
+            # E16: the director said "from <image1>" for a cup Vlad does not hold.
+            notes.append(f"PROP PICTURES: {words!r} is not held in <image{photo}>; from its words")
             photo = None
         lower = words.lower()
         known = next((p for p in bible["props"] if p.lower() == lower), None) or next(
@@ -664,6 +745,8 @@ def asset_pictures(
     # A prop drawn from a photo is in someone's hands there (the troll's log): that photo is
     # drawn clean too, or its grip comes back next to the prop picture (E16, real run).
     holding = {photo for _, photo in props if photo is not None}
+    # Whoever really holds something is drawn empty-handed, or it stays in their cut-out.
+    holding |= {photo for photo, items in (held or {}).items() if items}
     for _, photo in props:
         if photo is not None and photo not in numbers:
             numbers.append(photo)
@@ -729,7 +812,11 @@ def direct_keyframes(
     seed: int = 7,
     clock: Callable[[], float] = time.monotonic,
     cast: Sequence[Mapping[str, Any]] | None = None,
+    inventory: Sequence[Mapping[str, Any]] | None = None,
+    confirm: Callable[[int, str], bool] | None = None,
 ) -> KeyframePlan:
+    """``inventory``: the checked photo inventory (E16), each entry with ``checked``: object ->
+    whether SAM found it; it goes to the director and decides who is drawn empty-handed."""
     if not 1 <= len(photos) <= 3:
         raise DirectorError("the keyframes regime takes 1 to 3 photos")
     if not idea.strip():
@@ -748,6 +835,8 @@ def direct_keyframes(
         },
     )
     user = _user_text(found, PromptRole.DIRECTOR_KEYFRAMES, cast, idea)
+    if inventory is not None and "held" in found:
+        user = f"{user}\n\n{held_text(found, inventory)}"
     labels = [*KEYFRAME_LABELS, *(f"RUN {i + 1}" for i in range(len(counts)))]
     sections, problems, raw, seconds, attempts, used = _ask(
         run_text, system, user, list(photos), labels, seed, clock, OPTIONAL_KEYFRAME_LABELS
@@ -798,6 +887,8 @@ def direct_keyframes(
         count,
         seeds[0],
         background=background,
+        held=confirmed_holds(inventory) if compose else None,
+        confirm=confirm,
     )
     problems += notes
     clean = {a.photo: f"asset:{i}" for i, a in enumerate(assets) if a.kind == "clean"}

@@ -937,3 +937,28 @@ def test_camera_for():
     assert director.camera_for("Same as before.", start) == (start, False)
     assert director.camera_for("", start) == (start, False)
     assert director.camera_for("Close-up.", start) == ("Close-up.", True)
+
+
+def test_parse_inventory():
+    answer = (
+        "<think>x</think>\nImage 1: a man in blue | holds: a knife and a cup\n"
+        "<image2>: a troll | holds: nothing\n"
+    )
+    entries = director.parse_inventory(answer, 3)
+    assert entries[0] == {"photo": 1, "who": "a man in blue", "holds": ["knife", "cup"]}
+    assert entries[1]["holds"] == [] and entries[2] == {"photo": 3, "who": "", "holds": []}
+
+
+def test_the_checked_inventory_reaches_the_director_and_decides_the_props():
+    run_text, calls = runner(COMPOSED)
+    inventory = [{"photo": 1, "who": "a man", "holds": ["kite"], "checked": {"kite": False}}]
+    plan = direct_keyframes(
+        run_text, kf_prompt(compose=True), [PHOTO], "He flies away", inventory=inventory
+    )
+    assert "<image1>: holds nothing" in calls[0]["prompt"]
+    # The umbrella is claimed "from <image1>", but the man holds no umbrella there.
+    assert (
+        "PROP PICTURES: 'a black umbrella with a curved wooden handle' is not held in <image1>; "
+        "from its words" in plan.problems
+    )
+    assert [a.kind for a in plan.assets] == ["background", "cut"]

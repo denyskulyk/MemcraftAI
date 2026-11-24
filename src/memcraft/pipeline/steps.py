@@ -50,6 +50,7 @@ from memcraft.engines import (
     Guide,
     KeyframeRequest,
     RunOptions,
+    adapter_for,
     match_colours,
     pinned_adapter,
     plan,
@@ -71,15 +72,21 @@ from memcraft.models import (
     Recipe,
     StepName,
     StepStatus,
+    WorkflowVersion,
 )
 from memcraft.photos import list_photos, make_gemma_copies
 from memcraft.pipeline import choices, media
 from memcraft.pipeline.regime import regime_for
 from memcraft.roles.chat import record_idea, run_chat
 from memcraft.roles.critic import Critic, pinned_critic
-from memcraft.roles.director import direct_keyframes, direct_multishot, no_music
+from memcraft.roles.director import (
+    direct_keyframes,
+    direct_multishot,
+    no_music,
+    take_inventory,
+)
 from memcraft.roles.qwen import ComfyTextRunner
-from memcraft.roles.seed import GEMMA, QWEN, active_prompt
+from memcraft.roles.seed import GEMMA, QWEN, active_prompt, parts
 from memcraft.storage import FileStore
 from memcraft.worker.steps import StepContext, StepStopped
 
@@ -124,6 +131,16 @@ class GemmaLike(Protocol):
 
 
 type AdapterFor = Callable[[Session, Job, EngineSlot], Any]
+type RecipeAdapterFor = Callable[[Session, Recipe, EngineSlot], Any]
+
+
+def recipe_adapter(session: Session, recipe: Recipe, slot: EngineSlot) -> Any:
+    """The adapter of a recipe's engine, for a step that runs before the job pins it."""
+    engine_id = recipe.keyframe_engine_id if slot is EngineSlot.KEYFRAME else recipe.clip_engine_id
+    engine = session.get_one(EngineVersion, engine_id)
+    return adapter_for(session.get_one(WorkflowVersion, engine.workflow_version_id))
+
+
 type TextRunnerFor = Callable[[Any, str, Callable[[], bool]], Any]
 type Joiner = Callable[[Sequence[Path], Path], media.VideoInfo]
 
@@ -144,6 +161,7 @@ class Deps:
     work_dir: Path
     workflows_dir: Path
     adapter: AdapterFor = pinned_adapter
+    recipe_adapter: RecipeAdapterFor = recipe_adapter
     text_runner: TextRunnerFor = _text_runner
     join: Joiner = _join
     # Seconds a ComfyUI run is expected to take, for the progress it reports while it waits.
@@ -391,6 +409,11 @@ class ScenarioStep:
                     cast=job.cast,
                 )
             else:
+                inventory, confirm = None, None
+                found = parts(prompt.text)
+                if "inventory" in found and "background" in found:
+                    inventory = self._inventory(ctx, client, runner, recipe, prompt, images, seed)
+                    confirm = self._confirm(ctx, client, recipe, inventory)
                 scenario = direct_keyframes(
                     runner,
                     prompt,
@@ -400,9 +423,13 @@ class ScenarioStep:
                     frames=frames,
                     seed=seed,
                     cast=job.cast,
+                    inventory=inventory,
+                    confirm=confirm,
                 )
         deps.comfy.clean(folder)
         output = scenario.as_output()
+        if regime is not JobRegime.MULTISHOT and inventory is not None:
+            output["inventory"] = inventory
         output.update(
             regime=regime.value,
             idea=idea,
@@ -416,6 +443,70 @@ class ScenarioStep:
         versions.pin_job(session, job, recipe=recipe, critic=critic)
         versions.pin_step(session, _row(ctx), prompt=prompt)
         return output
+
+    def _inventory(
+        self,
+        ctx: StepContext,
+        client: Any,
+        runner: Any,
+        recipe: Recipe,
+        prompt: Any,
+        images: list[bytes],
+        seed: int,
+    ) -> list[dict[str, Any]]:
+        """E16: Qwen 3.8 lists what each photo's people hold, and SAM checks every object on the
+        photo itself; only what SAM finds counts. A failed check counts as not found."""
+        entries, _raw = take_inventory(runner, prompt, images, seed)
+        for entry in entries:
+            entry["checked"] = {
+                item: self._find(ctx, client, recipe, entry["photo"], item)
+                for item in entry["holds"]
+            }
+        return entries
+
+    def _confirm(
+        self, ctx: StepContext, client: Any, recipe: Recipe, inventory: list[dict[str, Any]]
+    ) -> Any:
+        """A check for the director's "from <imageN>" props: SAM looks for the prop's own words
+        on that photo. Every answer is kept in the photo's inventory entry."""
+        by_photo = {entry["photo"]: entry for entry in inventory}
+
+        def confirm(photo: int, words: str) -> bool:
+            entry = by_photo.setdefault(photo, {"photo": photo, "who": "", "holds": []})
+            claims = entry.setdefault("claims", {})
+            if words not in claims:
+                claims[words] = self._find(ctx, client, recipe, photo, words)
+            return bool(claims[words])
+
+        return confirm
+
+    def _find(self, ctx: StepContext, client: Any, recipe: Recipe, photo: int, what: str) -> bool:
+        """Whether SAM finds ``what`` on photo ``photo``; a check that fails counts as no."""
+        session, deps = ctx.session, self.deps
+        try:
+            path = deps.store.path_for(list_photos(session, ctx.job_id)[photo - 1])
+            adapter = deps.recipe_adapter(session, recipe, EngineSlot.KEYFRAME)
+            request = KeyframeRequest(
+                prompt="find", photos=(path,), seed=1, detect=what, folder=folder_of(ctx.job_id)
+            )
+            with work_folder(deps, ctx) as work:
+                found = adapter.render(client, request, work / "found.png")
+                return mask_share(found.image) >= HELD_SHARE
+        except Exception as error:  # a check that fails never fails the job
+            log.warning("job %s: SAM check of %r failed: %s", ctx.job_id, what, error)
+            return False
+
+
+def mask_share(path: Path) -> float:
+    """How much of a white-on-black mask picture is white."""
+    with Image.open(path) as image:
+        gray = image.convert("L")
+        hist = gray.histogram()
+    return sum(hist[128:]) / max(1, sum(hist))
+
+
+# The share of a photo SAM must mark for an object to count as held (a knife is about 0.5 %).
+HELD_SHARE = 0.001
 
 
 @dataclass

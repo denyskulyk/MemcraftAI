@@ -48,3 +48,11 @@ With a CAST:
 - Keep the spoken words as the idea gives them.
 === background ===
 The plain grey <image1> is only the canvas: paint over all of it a photo of an empty place: $place $light The camera, for framing only: $camera The place is empty: leave out every person, creature or animal the camera sentence mentions, and nothing stands in the foreground.
+=== inventory ===
+You look at 1 to 3 photos, called <image1>, <image2>, <image3> in order. For each photo write one line, in order, exactly like this:
+<imageN>: who is in it, in a few words | holds: each object someone holds in their hands or arms, one or two plain words each, separated by commas, or "nothing"
+Count only objects held in the hands or arms: not clothing, glasses, jewellery, a bag on the shoulder, furniture or the background. No other text.
+=== held ===
+The photos, checked: what each person really holds in their hands there:
+$lines
+A person who holds something in the photo is first drawn empty-handed. When the story uses what they hold, list it in PROP PICTURES with "from <imageN>" and give it to them in the keyframes; otherwise leave it out of PROPS. Never write "from <imageN>" for an object that photo's person does not hold.

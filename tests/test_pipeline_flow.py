@@ -134,10 +134,15 @@ class FakeDirector:
     def __init__(self):
         self.calls = 0
         self.extra = ""  # sections put before KEYFRAME START, like PROPS, CLEAN, PROP PICTURES
+        self.inventory = ""  # the answer to the photo inventory (E16)
+        self.prompts = []
 
     def __call__(self, client, folder, should_cancel):
         def run(system, user, images, seed):
             self.calls += 1
+            self.prompts.append(user)
+            if system.startswith("You look at"):
+                return self.inventory
             # The bible lists one person per photo.
             head, people, tail = SECTIONS.partition(SECTIONS.splitlines()[1])
             listed = " | ".join(people.removeprefix("PEOPLE: ").split(" | ")[: len(images)])
@@ -153,6 +158,8 @@ class FakeAdapters:
         self.clips = []
         self.releases = []
         self.fail_clip = None  # an exception class to raise once in render()
+        self.objects = set()  # what SAM finds in a photo (detect requests)
+        self.detects = []
         self.lock = threading.Lock()
 
     def __call__(self, session, job, slot):
@@ -164,6 +171,11 @@ class FakeAdapters:
         return self._clip(request, dest)
 
     def _keyframe(self, request, dest):
+        if request.detect:
+            self.detects.append(request.detect)
+            white = any(found in request.detect for found in self.objects)
+            Image.new("L", (96, 168), 255 if white else 0).save(dest)
+            return KeyframeResult(Path(dest), 0.5, uuid.uuid4().hex, 768, 1344)
         with self.lock:
             self.keyframes.append(request)
         Image.new("RGB", (96, 168), (len(self.keyframes) * 20 % 255, 80, 120)).save(dest)
@@ -282,6 +294,7 @@ def fakes(tmp_path, store):
         work_dir=tmp_path / "work",
         workflows_dir=ROOT / "workflows",
         adapter=adapters,
+        recipe_adapter=adapters,
         text_runner=director,
     )
     return type(
@@ -681,6 +694,8 @@ def test_compose_draws_the_pieces_and_never_reuses_the_start_keyframe(
     engine, session, store, fakes
 ):
     # E16, Denys's layout: background, both people cut out, the log cut out, then keyframes.
+    fakes.director.inventory = "<image1>: a man | holds: a log\n<image2>: a woman | holds: nothing"
+    fakes.adapters.objects = {"log"}
     fakes.director.extra = (
         "PROPS: a giant oak log with rough bark\n"
         "PROP PICTURES: a giant oak log with rough bark from <image1>\n"
@@ -703,3 +718,34 @@ def test_compose_draws_the_pieces_and_never_reuses_the_start_keyframe(
     assert stored[200] is AssetStore.SHARED and stored[0] is AssetStore.SHARED
     (clip,) = fakes.adapters.clips
     assert clip.first_frame == drawn[0] and [g.image for g in clip.guides] == [drawn[1]]
+
+
+@pytest.mark.compose
+def test_the_inventory_checks_held_objects_with_sam(engine, session, store, fakes):
+    # E16: Qwen says the man holds a knife and the woman a cup; SAM finds only the knife.
+    fakes.director.inventory = (
+        "<image1>: a man | holds: a knife\n<image2>: a woman | holds: a cup\n"
+    )
+    fakes.adapters.objects = {"knife"}
+    fakes.director.extra = (
+        "PROPS: a small knife | a blue cup\n"
+        "PROP PICTURES: a small knife from <image1> | a blue cup from <image2>\n"
+    )
+    job = new_job(session, store, photos=2, idea="he cuts the cake")
+    worker(engine, fakes, store).drain()
+    assert status_of(session, job) is S.PREVIEW_READY
+    # The inventory's objects, then the director's own words for the knife it says is held.
+    assert fakes.adapters.detects == ["knife", "cup", "a small knife"]
+    director_user = fakes.director.prompts[-1]
+    assert "<image1>: holds a knife" in director_user and "<image2>: holds nothing" in director_user
+    scenario = output(session, job, StepName.SCENARIO)
+    assert scenario["inventory"][0]["checked"] == {"knife": True}
+    assert scenario["inventory"][0]["claims"] == {"a small knife": True}
+    assert scenario["inventory"][1]["checked"] == {"cup": False}
+    kinds = [(a["kind"], a["photo"]) for a in scenario["assets"]]
+    # The man is redrawn empty-handed and his knife drawn alone; the cup is no picture.
+    assert kinds == [("background", None), ("clean", 1), ("cut", 2), ("prop", 1)]
+    assert (
+        "PROP PICTURES: 'a blue cup' is not held in <image2>; from its words"
+        in scenario["problems"]
+    )

@@ -85,7 +85,7 @@ FILES: tuple[PromptFile, ...] = (
             }
         ),
         # background: E16, the empty place drawn first; a version with it composes keyframes.
-        frozenset({"cast", "background"}),
+        frozenset({"cast", "background", "inventory", "held"}),
     ),
     PromptFile(PromptRole.CRITIC, GEMMA, "critic-gemma.txt", frozenset({"system", "user"})),
     PromptFile(PromptRole.CRITIC, QWEN, "critic-qwen3.8.txt", frozenset({"system", "user"})),

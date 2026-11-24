@@ -135,6 +135,8 @@ class KeyframeRequest:
     cutout: bool = False
     # Draw nothing: cut image_1 out as it is, so a person keeps the photo's face 1:1 (E16).
     cut_only: bool = False
+    # Draw nothing: find this object in image_1 with SAM and save its mask (E16 inventory).
+    detect: str = ""
 
     @property
     def references(self) -> tuple[Path, ...]:
@@ -279,6 +281,11 @@ class QwenImageKeyframes(Adapter):
             "prefix": f"{request.folder}/keyframe",
         }
         # A workflow version from before reference_width draws every reference at the canvas.
+        if request.detect:
+            if "detect" not in self.manifest.inputs:
+                raise LimitError("this keyframe workflow cannot find objects")
+            values["detect"] = True
+            values["detect_text"] = request.detect
         if request.cut_only:
             if "cut_only" not in self.manifest.inputs:
                 raise LimitError("this keyframe workflow cannot cut a photo out")

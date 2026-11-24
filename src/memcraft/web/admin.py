@@ -534,6 +534,8 @@ class DebugOut(BaseModel):
     bible: dict[str, Any] | None
     problems: list[str]
     pictures: list[DebugPicture]
+    # E16: what each photo's people hold, as Qwen listed it and SAM checked it.
+    inventory: list[dict[str, Any]] = []
 
 
 def _picture_label(ordinal: int, scenario: dict[str, Any]) -> tuple[str, str | None]:
@@ -607,6 +609,7 @@ def job_debug(job_id: uuid.UUID, admin: AdminUser, session: SessionDep) -> Debug
         bible=scenario.get("bible"),
         problems=list(scenario.get("problems") or []),
         pictures=pictures,
+        inventory=list(scenario.get("inventory") or []),
     )
 
 

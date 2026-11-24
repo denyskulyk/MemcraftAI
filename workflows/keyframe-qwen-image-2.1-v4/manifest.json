@@ -1,0 +1,261 @@
+{
+  "format": 1,
+  "name": "keyframe-qwen-image-2.1",
+  "version": 5,
+  "source": "Qwen-Image-2.1 keyframe from 1 to 6 references; the size of the picture is the size of image_1, which is scaled to the canvas, image_2 to image_6 to the smaller reference size. Every reference is loaded with its alpha (JoinImageWithAlpha), so RGBA cut-outs reach Qwen-Image-2.1, whose text encoder takes RGBA. With cutout on, BiRefNet (models/background_removal/birefnet.safetensors) removes the background of the drawn picture and it is saved as RGBA (E16). With cut_only on, nothing is drawn: BiRefNet cuts image_1 (scaled to the canvas) out as it is, so a person keeps the face of the photo 1:1 (E16, Denys). With detect on, nothing is drawn either: SAM 3.1 (checkpoints/sam3.1_multiplex_fp16.safetensors) finds detect_text in image_1, the mask is limited to BiRefNet's foreground (the people, so a can on a table behind them does not count) and saved, white on black (E16 photo inventory). SAM threshold 0.6: at 0.4 it 'found' a coffee mug on the troll; at 0.6 10 of 10 checks on the E16 photos were right.",
+  "inputs": {
+    "image_1": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "110",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "required": true
+    },
+    "image_2": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "120",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "toggle": {
+        "node": "123",
+        "class_type": "PrimitiveBoolean",
+        "input": "value"
+      },
+      "fallback": "image_1"
+    },
+    "image_3": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "130",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "toggle": {
+        "node": "133",
+        "class_type": "PrimitiveBoolean",
+        "input": "value"
+      },
+      "fallback": "image_1"
+    },
+    "image_4": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "140",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "toggle": {
+        "node": "143",
+        "class_type": "PrimitiveBoolean",
+        "input": "value"
+      },
+      "fallback": "image_1"
+    },
+    "image_5": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "150",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "toggle": {
+        "node": "153",
+        "class_type": "PrimitiveBoolean",
+        "input": "value"
+      },
+      "fallback": "image_1"
+    },
+    "image_6": {
+      "type": "image",
+      "targets": [
+        {
+          "node": "160",
+          "class_type": "LoadImage",
+          "input": "image"
+        }
+      ],
+      "toggle": {
+        "node": "163",
+        "class_type": "PrimitiveBoolean",
+        "input": "value"
+      },
+      "fallback": "image_1"
+    },
+    "prompt": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "21",
+          "class_type": "PrimitiveStringMultiline",
+          "input": "value"
+        }
+      ],
+      "required": true
+    },
+    "negative_prompt": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "22",
+          "class_type": "PrimitiveStringMultiline",
+          "input": "value"
+        }
+      ]
+    },
+    "seed": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "24",
+          "class_type": "KSampler",
+          "input": "seed"
+        }
+      ],
+      "required": true,
+      "min": 0,
+      "max": 18446744073709551615
+    },
+    "steps": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "24",
+          "class_type": "KSampler",
+          "input": "steps"
+        }
+      ],
+      "min": 1,
+      "max": 100
+    },
+    "cfg": {
+      "type": "float",
+      "targets": [
+        {
+          "node": "24",
+          "class_type": "KSampler",
+          "input": "cfg"
+        }
+      ],
+      "min": 0,
+      "max": 20
+    },
+    "width": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "1",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 256,
+      "max": 2048
+    },
+    "height": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "2",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 256,
+      "max": 2048
+    },
+    "reference_width": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "27",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 256,
+      "max": 2048
+    },
+    "reference_height": {
+      "type": "int",
+      "targets": [
+        {
+          "node": "28",
+          "class_type": "PrimitiveInt",
+          "input": "value"
+        }
+      ],
+      "min": 256,
+      "max": 2048
+    },
+    "prefix": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "26",
+          "class_type": "SaveImage",
+          "input": "filename_prefix"
+        }
+      ]
+    },
+    "cutout": {
+      "type": "bool",
+      "targets": [
+        {
+          "node": "40",
+          "class_type": "PrimitiveBoolean",
+          "input": "value"
+        }
+      ]
+    },
+    "cut_only": {
+      "type": "bool",
+      "targets": [
+        {
+          "node": "50",
+          "class_type": "PrimitiveBoolean",
+          "input": "value"
+        }
+      ]
+    },
+    "detect": {
+      "type": "bool",
+      "targets": [
+        {
+          "node": "60",
+          "class_type": "PrimitiveBoolean",
+          "input": "value"
+        }
+      ]
+    },
+    "detect_text": {
+      "type": "string",
+      "targets": [
+        {
+          "node": "61",
+          "class_type": "PrimitiveStringMultiline",
+          "input": "value"
+        }
+      ]
+    }
+  },
+  "outputs": {
+    "image": {
+      "node": "26",
+      "class_type": "SaveImage"
+    }
+  }
+}

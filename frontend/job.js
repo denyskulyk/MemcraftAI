@@ -383,6 +383,13 @@ async function loadDebug() {
   const notes = [];
   if (data.title) notes.push(data.title);
   if (!data.pictures.length) notes.push("No pictures drawn yet.");
+  if (data.inventory && data.inventory.length) {
+    const held = data.inventory.map((entry) => {
+      const items = Object.entries(entry.checked || {}).map(([item, ok]) => item + (ok ? " (found)" : " (not found)"));
+      return "photo " + entry.photo + ": " + (items.length ? items.join(", ") : "holds nothing");
+    });
+    notes.push("Held in the photos: " + held.join("; "));
+  }
   if (data.problems.length) notes.push("Director notes: " + data.problems.join("; "));
   $("debug-note").textContent = notes.join(" · ");
   $("debug-box").hidden = false;
