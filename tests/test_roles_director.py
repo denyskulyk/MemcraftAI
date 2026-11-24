@@ -977,3 +977,20 @@ def test_a_missing_quoted_line_is_added_for_its_speaker():
         'The soldier says "You good?"',
     ]
     assert notes == ["RUN 1: the idea's line 'Parry this!' was missing; added for the blue troll"]
+
+
+def test_the_inventory_also_reads_lines_without_holds():
+    entries = director.parse_inventory(
+        "<image1>: man in a uniform | nothing\n<image2>: blue orc | wooden club", 2
+    )
+    assert entries[0]["holds"] == [] and entries[1]["holds"] == ["wooden club"]
+
+
+def test_the_background_camera_names_no_people():
+    assert (
+        director.framing_only(
+            "full body shot from eye level, handheld, framing both people with room around them."
+        )
+        == "full body shot from eye level, handheld."
+    )
+    assert director.framing_only("centered on the two men") == ""

@@ -605,7 +605,24 @@ CUT_ONLY = "Cut out the people of <image1> as they are."
 _SAME_CAMERA = re.compile(r"^(?:same|unchanged|no change|static|none|-)\b", re.I)
 
 
-_INVENTORY_LINE = re.compile(r"<image([1-9])>\s*:\s*(.*?)\|\s*holds?\s*:\s*(.*)", re.I)
+# "<image2>: a troll | holds: a log", or without "holds:" as the llama-server director writes.
+_INVENTORY_LINE = re.compile(r"<image([1-9])>\s*:\s*(.*?)\|\s*(?:holds?\s*:)?\s*(.*)", re.I)
+_PEOPLE_WORDS = re.compile(
+    r"\b(?:people|persons?|men|man|woman|women|both|them|him|her|his|their|everyone|everybody|"
+    r"characters?|friends?|couple|duo|pair|figures?|subjects?|guys?|creatures?|the two|all)\b",
+    re.I,
+)
+
+
+def framing_only(camera: str) -> str:
+    """The camera sentence for the empty background: the parts that name people go (E16: "framing
+    both people with room around them" drew two strangers into the background)."""
+    parts = [part.strip() for part in re.split(r",|;|\bwith\b|\band\b", camera) if part.strip()]
+    kept = [part for part in parts if not _PEOPLE_WORDS.search(part)]
+    text = ", ".join(kept).strip(" .")
+    return f"{text}." if text else ""
+
+
 _NOTHING = re.compile(r"^(?:nothing|none|no(?:thing)? objects?|empty|-|n/?a)\.?$", re.I)
 
 
@@ -923,7 +940,11 @@ def direct_keyframes(
     background = (
         fill(
             found["background"],
-            {"place": bible["place"], "light": bible["light"], "camera": bible["camera"]},
+            {
+                "place": bible["place"],
+                "light": bible["light"],
+                "camera": framing_only(bible["camera"]),
+            },
         )
         if compose
         else None

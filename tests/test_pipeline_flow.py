@@ -736,7 +736,8 @@ def test_the_inventory_checks_held_objects_with_sam(engine, session, store, fake
     worker(engine, fakes, store).drain()
     assert status_of(session, job) is S.PREVIEW_READY
     # The inventory's objects, then the director's own words for the knife it says is held.
-    assert fakes.adapters.detects == ["knife", "cup", "a small knife"]
+    # Then SAM looks for people in the drawn background (none here).
+    assert fakes.adapters.detects == ["knife", "cup", "a small knife", "person"]
     director_user = fakes.director.prompts[-1]
     assert "<image1>: holds a knife" in director_user and "<image2>: holds nothing" in director_user
     scenario = output(session, job, StepName.SCENARIO)
@@ -803,7 +804,20 @@ def test_the_llama_director_gives_the_gpu_back_for_sam(engine, session, store, f
     job = new_job(session, store, photos=2, idea="he cuts the cake")
     worker(engine, fakes, store).drain()
     assert status_of(session, job) is S.PREVIEW_READY
-    # Inventory, SAM on the knife, the director, SAM on its words, then the step ends.
-    assert llama.events == ["start", "stop", "sam", "start", "stop", "sam", "end"]
+    # Inventory, SAM on the knife, the director, SAM on its words, then the step ends; the
+    # background step later asks SAM for people in it.
+    assert llama.events == ["start", "stop", "sam", "start", "stop", "sam", "end", "sam"]
     scenario = output(session, job, StepName.SCENARIO)
     assert scenario["inventory"][0]["checked"] == {"knife": True}
+
+
+@pytest.mark.compose
+def test_a_background_with_people_is_drawn_again(engine, session, store, fakes):
+    # E16: SAM "finds" a person every time; the background is drawn three times, then used.
+    fakes.adapters.objects = {"person"}
+    job = new_job(session, store, photos=2, idea="they wave")
+    worker(engine, fakes, store).drain()
+    assert status_of(session, job) is S.PREVIEW_READY
+    backgrounds = [k for k in fakes.adapters.keyframes if k.prompt.startswith("The plain grey")]
+    assert [k.seed for k in backgrounds] == [backgrounds[0].seed + n for n in (0, 1, 3)]
+    assert fakes.adapters.detects.count("person") == 2

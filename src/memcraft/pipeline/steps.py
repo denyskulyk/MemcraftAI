@@ -32,7 +32,7 @@ import shutil
 import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -579,6 +579,9 @@ def mask_share(path: Path) -> float:
 
 # The share of a photo SAM must mark for an object to count as held (a knife is about 0.5 %).
 HELD_SHARE = 0.001
+# A person in a drawn background, as SAM marks it; and how often the background is drawn again.
+PERSON_SHARE = 0.002
+BACKGROUND_RETRIES = 2
 
 
 @dataclass
@@ -638,6 +641,22 @@ class KeyframeStep:
                     work / "keyframe.png",
                     run_options(ctx, deps.expected["keyframe"], 0.02, 0.95),
                 )
+                if is_asset and keyframe.get("kind") == "background":
+                    # E16: Qwen sometimes draws people into the empty place anyway; SAM looks
+                    # for a person and the background is drawn again with the next seed.
+                    for retry in range(1, BACKGROUND_RETRIES + 1):
+                        if not self._has_person(ctx, client, adapter, result.image, work):
+                            break
+                        log.warning(
+                            "job %s: people in the background, redraw %d", ctx.job_id, retry
+                        )
+                        request = replace(request, seed=request.seed + retry)
+                        result = adapter.render(
+                            client,
+                            request,
+                            work / "keyframe.png",
+                            run_options(ctx, deps.expected["keyframe"], 0.02, 0.95),
+                        )
             matched = False
             if 0 < ctx.ordinal < ASSET_ORDINAL:
                 # Middle and end keyframes take the start keyframe's brightness and tint (E16).
@@ -655,6 +674,24 @@ class KeyframeStep:
             "prompt_id": result.prompt_id,
             "colour_matched": matched,
         }
+
+    def _has_person(
+        self, ctx: StepContext, client: Any, adapter: Any, image: Path, work: Path
+    ) -> bool:
+        """Whether SAM finds a person in a drawn background; a check that fails says no."""
+        try:
+            request = KeyframeRequest(
+                prompt="find",
+                photos=(image,),
+                seed=1,
+                detect="person",
+                folder=folder_of(ctx.job_id),
+            )
+            found = adapter.render(client, request, work / "person.png")
+            return mask_share(found.image) >= PERSON_SHARE
+        except Exception as error:  # a check that fails never fails the job
+            log.warning("job %s: SAM check of the background failed: %s", ctx.job_id, error)
+            return False
 
     def _face(self, ctx: StepContext, asset: Mapping[str, Any]) -> Mapping[str, Any]:
         """A face crop, cut from the photo here; nothing runs on the GPU for it."""
