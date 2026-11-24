@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from memcraft.expiry import PREVIEW_LIFETIME
 from memcraft.models import (
+    ASSET_ORDINAL,
     Asset,
     AssetKind,
     Job,
@@ -37,7 +38,6 @@ from memcraft.models import (
 )
 from memcraft.pipeline import choices
 from memcraft.pipeline.steps import (
-    ASSET_ORDINAL,
     MODEL_CLIPS,
     MODEL_KEYFRAMES,
     MP4,

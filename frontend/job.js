@@ -329,5 +329,69 @@ $("delete").addEventListener("click", (e) => {
   });
 });
 
+// The admin's debug drawer (E16): background, people, props and keyframes as drawn. The admin
+// API answers only a signed-in admin, so for everybody else the drawer stays hidden.
+async function loadDebug() {
+  let data;
+  try {
+    data = await call("GET", "/api/admin/jobs/" + encodeURIComponent(jobId) + "/debug");
+  } catch (error) {
+    return;
+  }
+  const grid = $("debug-pictures");
+  grid.replaceChildren();
+  for (const picture of data.pictures) {
+    const figure = document.createElement("figure");
+    const caption = document.createElement("figcaption");
+    caption.textContent = picture.label;
+    if (picture.available && picture.asset_id) {
+      const link = document.createElement("a");
+      link.href = "/api/admin/files/" + encodeURIComponent(picture.asset_id);
+      link.target = "_blank";
+      link.rel = "noopener";
+      const image = document.createElement("img");
+      image.src = link.href;
+      image.alt = picture.label;
+      image.loading = "lazy";
+      link.append(image);
+      figure.append(link);
+    } else {
+      const missing = document.createElement("p");
+      missing.className = "hint";
+      missing.textContent = "Saved before the debug drawer, not viewable here.";
+      figure.append(missing);
+    }
+    figure.append(caption);
+    if (picture.verdict) {
+      const verdict = document.createElement("p");
+      verdict.className = "verdict verdict-" + picture.verdict.replace(" ", "-");
+      verdict.textContent = "Critic: " + picture.verdict + (picture.reason ? " · " + picture.reason : "");
+      figure.append(verdict);
+    }
+    if (picture.prompt) {
+      const prompt = document.createElement("details");
+      const label = document.createElement("summary");
+      label.textContent = "Prompt";
+      const text = document.createElement("p");
+      text.className = "hint";
+      text.textContent = picture.prompt;
+      prompt.append(label, text);
+      figure.append(prompt);
+    }
+    grid.append(figure);
+  }
+  const notes = [];
+  if (data.title) notes.push(data.title);
+  if (!data.pictures.length) notes.push("No pictures drawn yet.");
+  if (data.problems.length) notes.push("Director notes: " + data.problems.join("; "));
+  $("debug-note").textContent = notes.join(" · ");
+  $("debug-box").hidden = false;
+}
+
+$("debug-reload").addEventListener("click", loadDebug);
+
 if (!jobId) gone("No video was chosen.");
-else load();
+else {
+  load();
+  loadDebug();
+}

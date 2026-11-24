@@ -31,6 +31,7 @@ from memcraft.models import (
     JobRegime,
     JobStatus,
     JobStep,
+    PromptRole,
     Setting,
     StepName,
     StepStatus,
@@ -41,6 +42,7 @@ from memcraft.pipeline import build_registry, media
 from memcraft.pipeline.planner import PipelinePlanner
 from memcraft.pipeline.steps import Deps, folder_of
 from memcraft.queue import transition
+from memcraft.roles import seed as seed_module
 from memcraft.roles.gemma import GemmaClient
 from memcraft.roles.seed import seed_prompts
 from memcraft.storage import FileStore
@@ -238,7 +240,18 @@ class Crash(BaseException):
 
 
 @pytest.fixture
-def session(engine):
+def session(engine, request, monkeypatch):
+    if request.node.get_closest_marker("compose") is None:
+        # The keyframe director as before E16: its prompt without the background part.
+        shipped = seed_module.read_prompt
+
+        def older(role, model):
+            text = shipped(role, model)
+            if role is PromptRole.DIRECTOR_KEYFRAMES:
+                text = text.split("=== background ===")[0]
+            return text
+
+        monkeypatch.setattr(seed_module, "read_prompt", older)
     with Session(engine) as session:
         register_defaults(session, ROOT / "workflows", activate=True)
         seed_prompts(session)
@@ -517,7 +530,7 @@ def test_asset_pictures_come_first_and_replace_the_photo(engine, session, store,
     photos = sorted(assets(session, job, AssetKind.PHOTO), key=lambda a: a.ordinal)
     first, second = (store.path_for(a) for a in photos)
     drawn = {a.ordinal: store.path_for(a) for a in assets(session, job, AssetKind.KEYFRAME)}
-    assert clean.photos == (first,) and clean.prompt.startswith("Edit <image1>: the same people")
+    assert clean.photos == (first,) and clean.prompt.startswith("Edit <image1>: exactly the same ")
     assert prop.photos == (first,) and prop.prompt.startswith(
         "Show only the object from <image1>: a giant"
     )
@@ -661,3 +674,29 @@ def test_release_uses_the_pinned_recipe(engine, session, store, fakes):
     assert status_of(session, job) is S.RELEASED
     assert fakes.adapters.releases[-1][2] is JobQuality.FHD1080
     assert output(session, job, StepName.RELEASE)["quality"] == "fhd1080"
+
+
+@pytest.mark.compose
+def test_compose_draws_the_pieces_and_never_reuses_the_start_keyframe(
+    engine, session, store, fakes
+):
+    # E16, Denys's layout: background, both people cut out, the log cut out, then keyframes.
+    fakes.director.extra = (
+        "PROPS: a giant oak log with rough bark\n"
+        "PROP PICTURES: a giant oak log with rough bark from <image1>\n"
+    )
+    job = new_job(session, store, photos=2, idea="he swings a log")
+    worker(engine, fakes, store).drain()
+    assert status_of(session, job) is S.PREVIEW_READY
+    background, first, second, log, start, end = fakes.adapters.keyframes
+    assert background.prompt.startswith("Replace <image1> completely") and not background.cutout
+    assert first.cutout and second.cutout and log.cutout
+    drawn = {a.ordinal: store.path_for(a) for a in assets(session, job, AssetKind.KEYFRAME)}
+    pieces = (drawn[200], drawn[201], drawn[202], drawn[203])
+    assert start.photos == pieces and end.photos == pieces
+    assert start.extra_references == end.extra_references == ()
+    assert end.prompt.startswith("Put the people and objects into the empty place of <image1>")
+    stored = {a.ordinal: a.store for a in assets(session, job, AssetKind.KEYFRAME)}
+    assert stored[200] is AssetStore.SHARED and stored[0] is AssetStore.SHARED
+    (clip,) = fakes.adapters.clips
+    assert clip.first_frame == drawn[0] and [g.image for g in clip.guides] == [drawn[1]]

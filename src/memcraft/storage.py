@@ -32,7 +32,9 @@ STORE_FOR_KIND = {
     AssetKind.PREVIEW: AssetStore.SHARED,
     AssetKind.RELEASE: AssetStore.SHARED,
     AssetKind.GEMMA_COPY: AssetStore.PRIVATE,
-    AssetKind.KEYFRAME: AssetStore.PRIVATE,
+    # Shared since E16, so the admin's debug drawer can show them; they come from the photos,
+    # which are shared too. Keyframes saved before stay where they are.
+    AssetKind.KEYFRAME: AssetStore.SHARED,
     AssetKind.LATENT: AssetStore.PRIVATE,
     AssetKind.CLIP: AssetStore.PRIVATE,
 }

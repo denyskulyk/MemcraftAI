@@ -29,7 +29,10 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["postgres: needs a real Postgres in MEMCRAFT_TEST_DATABASE_URL"]
+markers = [
+    "postgres: needs a real Postgres in MEMCRAFT_TEST_DATABASE_URL",
+    "compose: the director prompt with the background part (E16 background-first keyframes)",
+]
 
 [tool.ruff]
 line-length = 100

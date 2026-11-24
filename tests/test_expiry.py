@@ -299,8 +299,9 @@ def test_web_store_leaves_private_files_to_the_worker(store, session, roots):
     new_job(store, session)
     assert expire_previews(session, FileStore(roots[0]), NOW) == 1
     assert files(roots[0]) == []
-    assert len(files(roots[1])) == 3
-    assert store.purge_deleted_files(session) == (3, 0)
+    # Keyframes are shared since E16; Gemma copies, latents and clips stay with the worker.
+    assert len(files(roots[1])) == 2
+    assert store.purge_deleted_files(session) == (2, 0)
 
 
 @pytest.mark.parametrize("bad", range(3))

@@ -103,6 +103,11 @@ class AssetKind(enum.StrEnum):
     RELEASE = "release"
 
 
+# Keyframe step ordinals from here on are a scenario's asset pictures: background, people and
+# props, drawn before the keyframes (E16).
+ASSET_ORDINAL = 200
+
+
 class AssetStore(enum.StrEnum):
     SHARED = "shared"
     PRIVATE = "private"

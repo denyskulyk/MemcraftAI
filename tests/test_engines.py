@@ -352,7 +352,7 @@ def test_limits_as_json():
     limits = LtxClips.limits.as_json()
     assert limits["frame_rule"] == "8n+1" and limits["max_frames"] == 297
     assert limits["side_divisor"] == 32 and limits["sound"] is True
-    assert QwenImageKeyframes.limits.as_json()["references"] == 4
+    assert QwenImageKeyframes.limits.as_json()["references"] == 6
 
 
 def test_frames():

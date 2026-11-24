@@ -329,6 +329,7 @@ def test_every_admin_route_needs_the_admin(client, engine):
     for route in router.routes:
         path = route.path.replace("{user_id}", str(uuid.uuid4()))
         path = path.replace("{job_id}", str(uuid.uuid4()))
+        path = path.replace("{asset_id}", str(uuid.uuid4()))
         assert "{" not in path, f"teach this test about {route.path}"
         for method in route.methods:
             alice = client.request(method, path, headers={"Tailscale-User-Login": ALICE})

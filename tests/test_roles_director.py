@@ -95,12 +95,13 @@ def clock():
     return lambda: next(ticks)
 
 
-def kf_prompt():
-    return PromptVersion(
-        role=PromptRole.DIRECTOR_KEYFRAMES,
-        model="qwen3.8",
-        text=read_prompt(PromptRole.DIRECTOR_KEYFRAMES, "qwen3.8"),
-    )
+def kf_prompt(compose=False):
+    """The shipped prompt; without ``compose`` its background part is cut off, which is how
+    versions before E16's background-first layout read."""
+    text = read_prompt(PromptRole.DIRECTOR_KEYFRAMES, "qwen3.8")
+    if not compose:
+        text = text.split("=== background ===")[0]
+    return PromptVersion(role=PromptRole.DIRECTOR_KEYFRAMES, model="qwen3.8", text=text)
 
 
 def ms_prompt():
@@ -824,7 +825,7 @@ def test_asset_pictures_replace_the_photo_and_join_the_start_keyframe():
     plan = direct_keyframes(run_text, kf_prompt(), [PHOTO], "He flies away")
     clean, umbrella, kite = plan.assets
     assert (clean.kind, clean.photo) == ("clean", 1)
-    assert clean.prompt.startswith("Edit <image1>: the same people")
+    assert clean.prompt.startswith("Edit <image1>: exactly the same the man in the red jacket")
     assert "the man in the red jacket: short curly brown hair" in clean.prompt
     assert (umbrella.kind, umbrella.photo) == ("prop", 1)
     assert umbrella.prompt.startswith("Show only the object from <image1>: a black umbrella")
@@ -869,3 +870,66 @@ def test_without_asset_sections_the_references_stay_as_before():
     run_text, _ = runner(KEYFRAMES_ONE)
     plan = direct_keyframes(run_text, kf_prompt(), [PHOTO], "He flies away")
     assert plan.assets == [] and plan.keyframes[1].references == [1, "start"]
+
+
+# E16, Denys's layout: background, people and props first; keyframes put together from them.
+
+COMPOSED = KEYFRAMES_ONE.replace(
+    "KEYFRAME START:",
+    "CAMERA MIDDLE: same\n"
+    "CAMERA END: Close-up on the man's face from the front.\n"
+    "PROPS: a black umbrella with a curved wooden handle | a red kite\n"
+    "PROP PICTURES: a black umbrella with a curved wooden handle from <image1> | a red kite\n"
+    "KEYFRAME START:",
+)
+
+
+def test_the_compose_layout_draws_background_people_and_props_first():
+    run_text, calls = runner(COMPOSED)
+    plan = direct_keyframes(run_text, kf_prompt(compose=True), [PHOTO], "He flies away")
+    assert "CAMERA END:" in calls[0]["system"] and "CLEAN:" not in calls[0]["system"]
+    background, man, umbrella, kite = plan.assets
+    assert background.kind == "background" and not background.cutout
+    assert background.prompt.startswith(
+        "Replace <image1> completely with a photo of an empty place"
+    )
+    assert plan.bible["place"] in background.prompt and plan.bible["camera"] in background.prompt
+    assert (man.kind, man.photo, man.cutout) == ("clean", 1, True)
+    assert umbrella.cutout and kite.cutout and kite.photo is None
+    start, end = plan.keyframes
+    for keyframe in (start, end):
+        assert keyframe.references == ["asset:0", "asset:1", "asset:2", "asset:3"]
+        assert keyframe.layout == "compose" and "start" not in keyframe.references
+    assert not start.camera_moves and end.camera_moves
+    assert end.action.startswith("Close-up on the man's face from the front.")
+    first = start.prompt(plan.bible)
+    assert first.startswith("Put the people and objects into the empty place of <image1>")
+    assert "the camera position and the framing" in first
+    assert "Take a black umbrella with a curved wooden handle from <image3>." in first
+    assert "Take a red kite from <image4>." in first
+    assert "from <image2>" in first.split("Each person appears exactly once.")[1]
+    assert "the camera position and the framing" not in end.prompt(plan.bible)
+    output = plan.as_output()
+    assert output["assets"][1]["cutout"] is True and output["keyframes"][0]["layout"] == "compose"
+
+
+def test_compose_keeps_props_within_six_pictures():
+    answer = THREE_PEOPLE.replace(
+        "**KEYFRAME START:**",
+        "**PROPS:** a wooden oar | a tiny flag | a duck\n"
+        "**PROP PICTURES:** a wooden oar | a tiny flag | a duck\n**KEYFRAME START:**",
+    )
+    run_text, _ = runner(answer)
+    plan = direct_keyframes(run_text, kf_prompt(compose=True), [PHOTO, PHOTO, PHOTO], "Rowing")
+    kinds = [a.kind for a in plan.assets]
+    assert kinds == ["background", "clean", "clean", "clean", "prop", "prop"]
+    assert "PROP PICTURES: 1 left out (at most 2)" in plan.problems
+    assert len(plan.keyframes[0].references) == 6
+
+
+def test_camera_for():
+    start = "Static full-body shot."
+    assert director.camera_for("same", start) == (start, False)
+    assert director.camera_for("Same as before.", start) == (start, False)
+    assert director.camera_for("", start) == (start, False)
+    assert director.camera_for("Close-up.", start) == ("Close-up.", True)

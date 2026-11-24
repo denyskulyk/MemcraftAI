@@ -1,0 +1,553 @@
+{
+  "1": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 768
+    }
+  },
+  "2": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 1344
+    }
+  },
+  "3": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "4": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "3",
+        0
+      ],
+      "device": "auto",
+      "dtype": "default"
+    }
+  },
+  "5": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "6": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "21": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": "placeholder"
+    }
+  },
+  "22": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": ""
+    }
+  },
+  "23": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": [
+        "5",
+        0
+      ],
+      "vae": [
+        "6",
+        0
+      ],
+      "prompt": [
+        "21",
+        0
+      ],
+      "negative_prompt": [
+        "22",
+        0
+      ],
+      "resolution": 0,
+      "images.image_1": [
+        "112",
+        0
+      ],
+      "images.image_2": [
+        "124",
+        0
+      ],
+      "images.image_3": [
+        "134",
+        0
+      ],
+      "images.image_4": [
+        "144",
+        0
+      ],
+      "images.image_5": [
+        "154",
+        0
+      ],
+      "images.image_6": [
+        "164",
+        0
+      ]
+    }
+  },
+  "24": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "23",
+        0
+      ],
+      "negative": [
+        "23",
+        1
+      ],
+      "latent_image": [
+        "23",
+        2
+      ],
+      "seed": 0,
+      "steps": 16,
+      "cfg": 3.0,
+      "sampler_name": "dpm_2",
+      "scheduler": "normal",
+      "denoise": 1.0
+    }
+  },
+  "25": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "24",
+        0
+      ],
+      "vae": [
+        "6",
+        0
+      ]
+    }
+  },
+  "26": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "45",
+        0
+      ],
+      "filename_prefix": "memcraft/keyframe"
+    }
+  },
+  "27": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 512
+    }
+  },
+  "28": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 896
+    }
+  },
+  "110": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "111": {
+    "class_type": "JoinImageWithAlpha",
+    "inputs": {
+      "image": [
+        "110",
+        0
+      ],
+      "alpha": [
+        "110",
+        1
+      ]
+    }
+  },
+  "112": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "111",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": [
+        "1",
+        0
+      ],
+      "height": [
+        "2",
+        0
+      ],
+      "crop": "center"
+    }
+  },
+  "120": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "121": {
+    "class_type": "JoinImageWithAlpha",
+    "inputs": {
+      "image": [
+        "120",
+        0
+      ],
+      "alpha": [
+        "120",
+        1
+      ]
+    }
+  },
+  "122": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "121",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": [
+        "27",
+        0
+      ],
+      "height": [
+        "28",
+        0
+      ],
+      "crop": "center"
+    }
+  },
+  "123": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    }
+  },
+  "124": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "123",
+        0
+      ],
+      "on_true": [
+        "122",
+        0
+      ]
+    }
+  },
+  "130": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "131": {
+    "class_type": "JoinImageWithAlpha",
+    "inputs": {
+      "image": [
+        "130",
+        0
+      ],
+      "alpha": [
+        "130",
+        1
+      ]
+    }
+  },
+  "132": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "131",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": [
+        "27",
+        0
+      ],
+      "height": [
+        "28",
+        0
+      ],
+      "crop": "center"
+    }
+  },
+  "133": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    }
+  },
+  "134": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "133",
+        0
+      ],
+      "on_true": [
+        "132",
+        0
+      ]
+    }
+  },
+  "140": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "141": {
+    "class_type": "JoinImageWithAlpha",
+    "inputs": {
+      "image": [
+        "140",
+        0
+      ],
+      "alpha": [
+        "140",
+        1
+      ]
+    }
+  },
+  "142": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "141",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": [
+        "27",
+        0
+      ],
+      "height": [
+        "28",
+        0
+      ],
+      "crop": "center"
+    }
+  },
+  "143": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    }
+  },
+  "144": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "143",
+        0
+      ],
+      "on_true": [
+        "142",
+        0
+      ]
+    }
+  },
+  "150": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "151": {
+    "class_type": "JoinImageWithAlpha",
+    "inputs": {
+      "image": [
+        "150",
+        0
+      ],
+      "alpha": [
+        "150",
+        1
+      ]
+    }
+  },
+  "152": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "151",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": [
+        "27",
+        0
+      ],
+      "height": [
+        "28",
+        0
+      ],
+      "crop": "center"
+    }
+  },
+  "153": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    }
+  },
+  "154": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "153",
+        0
+      ],
+      "on_true": [
+        "152",
+        0
+      ]
+    }
+  },
+  "160": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "161": {
+    "class_type": "JoinImageWithAlpha",
+    "inputs": {
+      "image": [
+        "160",
+        0
+      ],
+      "alpha": [
+        "160",
+        1
+      ]
+    }
+  },
+  "162": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "161",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": [
+        "27",
+        0
+      ],
+      "height": [
+        "28",
+        0
+      ],
+      "crop": "center"
+    }
+  },
+  "163": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    }
+  },
+  "164": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "163",
+        0
+      ],
+      "on_true": [
+        "162",
+        0
+      ]
+    }
+  },
+  "40": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    }
+  },
+  "41": {
+    "class_type": "LoadBackgroundRemovalModel",
+    "inputs": {
+      "bg_removal_name": "birefnet.safetensors"
+    }
+  },
+  "42": {
+    "class_type": "RemoveBackground",
+    "inputs": {
+      "bg_removal_model": [
+        "41",
+        0
+      ],
+      "image": [
+        "25",
+        0
+      ]
+    }
+  },
+  "43": {
+    "class_type": "InvertMask",
+    "inputs": {
+      "mask": [
+        "42",
+        0
+      ]
+    }
+  },
+  "44": {
+    "class_type": "JoinImageWithAlpha",
+    "inputs": {
+      "image": [
+        "25",
+        0
+      ],
+      "alpha": [
+        "43",
+        0
+      ]
+    }
+  },
+  "45": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "switch": [
+        "40",
+        0
+      ],
+      "on_false": [
+        "25",
+        0
+      ],
+      "on_true": [
+        "44",
+        0
+      ]
+    }
+  }
+}

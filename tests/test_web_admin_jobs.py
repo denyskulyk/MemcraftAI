@@ -253,3 +253,81 @@ def test_a_retry_that_worked_hides_the_failed_try(engine):
         session.flush()
         summary = _step_summaries(session, [job.id])[job.id]
     assert (summary.done, summary.total, summary.last_error) == (1, 1, None)
+
+
+def test_the_debug_drawer_lists_pictures_with_labels_and_prompts(client, engine, store):
+    with Session(engine) as session:
+        owner = session.scalar(select(User.id).where(User.tailscale_login == OWNER))
+    job_id = add_job(engine, store, owner, JobStatus.PREVIEW_READY)
+    scenario = {
+        "title": "Log day",
+        "bible": {"place": "a yard"},
+        "problems": ["a note"],
+        "assets": [
+            {"kind": "background", "words": "", "prompt": "empty yard"},
+            {"kind": "clean", "photo": 1, "words": "the man", "prompt": "the man alone"},
+            {"kind": "prop", "photo": None, "words": "a log", "prompt": "a log alone"},
+        ],
+        "keyframes": [{"at": "start", "prompt": "start prompt"}, {"at": "end", "prompt": "end"}],
+    }
+    with Session(engine) as session:
+        job = session.get(Job, job_id)
+        session.add(
+            JobStep(
+                job_id=job_id,
+                step=StepName.SCENARIO,
+                inputs={},
+                inputs_hash="h",
+                status=StepStatus.DONE,
+                output=scenario,
+            )
+        )
+        session.add(
+            JobStep(
+                job_id=job_id,
+                step=StepName.CHECK,
+                inputs={},
+                inputs_hash="c",
+                status=StepStatus.DONE,
+                output={
+                    "kind": "keyframes",
+                    "keyframes": [
+                        {"ordinal": 0, "face": True, "face_why": "same man"},
+                        {"ordinal": 1, "face": False, "face_why": "lost his beard"},
+                    ],
+                },
+            )
+        )
+        for ordinal in (200, 201, 202, 0, 1, 100):
+            store.save(
+                session,
+                owner_id=job.owner_id,
+                job_id=job_id,
+                kind=AssetKind.KEYFRAME,
+                mime="image/png",
+                source=io.BytesIO(b"png"),
+                ordinal=ordinal,
+            )
+        session.commit()
+    answer = client.get(f"/api/admin/jobs/{job_id}/debug")
+    assert answer.status_code == 200
+    data = answer.json()
+    assert data["title"] == "Log day" and data["problems"] == ["a note"]
+    labels = [p["label"] for p in data["pictures"]]
+    assert labels == [
+        "background",
+        "character: photo 1",
+        "prop: a log",
+        "keyframe start",
+        "keyframe end",
+        "last frame of run 1",
+    ]
+    assert data["pictures"][3]["prompt"] == "start prompt"
+    verdicts = [(p["verdict"], p["reason"]) for p in data["pictures"]]
+    assert verdicts[3:5] == [("pass", "same man"), ("fail", "lost his beard")]
+    assert verdicts[0] == (None, None)
+    picture = client.get(f"/api/admin/files/{data['pictures'][0]['asset_id']}")
+    assert picture.status_code == 200 and picture.content == b"png"
+    # Only keyframe pictures: a photo is not served here.
+    assert client.get(f"/api/admin/jobs/{job_id}/debug").status_code == 200
+    assert client.get("/api/admin/files/00000000-0000-0000-0000-000000000000").status_code == 404

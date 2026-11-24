@@ -24,6 +24,7 @@ REQUIRED = {
     "qwen2.1-with-lora-v7": {"image_1": "a.png", "positive_prompt": "a cat", "seed": 7},
     "qwen3.8-director": {"system": "s", "prompt": "p", "image_1": "a.png"},
     "keyframe-qwen-image-2.1-v1": {"image_1": "a.png", "prompt": "a cat", "seed": 7},
+    "keyframe-qwen-image-2.1-v2": {"image_1": "a.png", "prompt": "a cat", "seed": 7},
     "clip-ltx-2.5-v1": {"first_frame": "a.png", "prompt": "a cat", "seed": 7},
 }
 # The two graphs converted from UI files; the other folders have tests of their own.

@@ -43,11 +43,12 @@ EDIT_SCENE = (
     "the framing and every object exactly as in <image1>. " + ONCE + "Change only the poses and "
     "expressions as follows. The place: {place} The light: {light} Faces come from {photos}. "
 )
+# Not only people: a photo may show a cat (E16: "the same people" turned a cat into two men).
 CLEAN_PERSON = (
-    "Edit <image1>: the same people with exactly the same faces, hair, bodies and clothing "
-    "({looks}), standing upright in a relaxed neutral pose, arms hanging at their sides, both "
-    "hands empty and open. Remove every object they hold completely. Full body from head to "
-    "feet, plain light grey studio background, even soft light."
+    "Edit <image1>: exactly the same {looks}, with the same face, hair or fur, body and "
+    "clothing as in <image1>, and nobody else. Show them alone in a relaxed neutral pose, "
+    "the whole body from head to feet, hands or paws empty. Remove every object they hold "
+    "completely. Plain light grey studio background, even soft light."
 )
 PROP_FROM_PHOTO = (
     "Show only the object from <image1>: {words}. Alone and whole at its full length and size, "
@@ -67,7 +68,8 @@ DEFAULT_NEGATIVE = (
 
 @dataclass(frozen=True)
 class KeyframeLimits:
-    references: int = 4
+    # Workflow v3 (keyframe-qwen-image-2.1-v2) has 6 picture slots; v2 had 4.
+    references: int = 6
     width: int = 768
     height: int = 1344
     side_divisor: int = 32
@@ -115,6 +117,8 @@ class KeyframeRequest:
     reference_pixels: int | None = REFERENCE_PIXELS
     # A subfolder of ComfyUI's input and output folders, such as the job id in hex.
     folder: str = "memcraft"
+    # Cut the drawn picture out of its background (BiRefNet) and save it as RGBA (E16).
+    cutout: bool = False
 
     @property
     def references(self) -> tuple[Path, ...]:
@@ -167,6 +171,31 @@ def matching_prompt(
     return prefix + action.strip()
 
 
+COMPOSE = (
+    "Put the people and objects into the empty place of <image1>: keep its place, light and "
+    "colours{keep}. The people come from {people}, each shown alone there: give them the poses "
+    "below. "
+)
+
+
+def compose_prompt(
+    action: str, *, people: int, props: Sequence[str] = (), camera_moves: bool = False
+) -> str:
+    """A keyframe put together from asset pictures (E16, Denys's layout): <image1> is the empty
+    place, then one cut-out picture per photo, then the prop pictures. The action names the
+    photos as <imageN>; they move up by one. No other keyframe is a reference."""
+    if not 1 <= people <= 3:
+        raise LimitError("a keyframe takes 1 to 3 photos")
+    tags = ", ".join(f"<image{i}>" for i in range(2, people + 2))
+    keep = "" if camera_moves else ", the camera position and the framing"
+    takes = "".join(
+        PROP_TAKE.format(words=words.strip(), image=f"<image{people + 1 + i}>") + " "
+        for i, words in enumerate(props, start=1)
+    )
+    moved = re.sub(r"<image([1-9])>", lambda m: f"<image{int(m.group(1)) + 1}>", action.strip())
+    return COMPOSE.format(keep=keep, people=tags) + takes + ONCE + moved
+
+
 def edit_prompt(action: str, *, place: str, light: str, photos: int) -> str:
     """A middle or end keyframe as an edit of the start keyframe, which is <image1>; the photos
     (or their clean pictures) follow, so the action's <imageN> move up by one (E16)."""
@@ -210,8 +239,11 @@ class QwenImageKeyframes(Adapter):
         refs = request.references
         if not request.photos:
             raise LimitError("a keyframe needs at least one photo")
-        if len(refs) > self.limits.references:
-            raise LimitError(f"at most {self.limits.references} references, not {len(refs)}")
+        slots = sum(1 for name in self.manifest.inputs if name.startswith("image_"))
+        if len(refs) > min(self.limits.references, slots):
+            raise LimitError(
+                f"at most {min(self.limits.references, slots)} references, not {len(refs)}"
+            )
         for side in (request.width, request.height):
             if side % self.limits.side_divisor:
                 raise LimitError(f"sides must divide by {self.limits.side_divisor}, not {side}")
@@ -231,6 +263,10 @@ class QwenImageKeyframes(Adapter):
             "prefix": f"{request.folder}/keyframe",
         }
         # A workflow version from before reference_width draws every reference at the canvas.
+        if request.cutout:
+            if "cutout" not in self.manifest.inputs:
+                raise LimitError("this keyframe workflow cannot cut pictures out")
+            values["cutout"] = True
         if request.reference_pixels and "reference_width" in self.manifest.inputs:
             values["reference_width"], values["reference_height"] = reference_size(
                 request.width, request.height, request.reference_pixels

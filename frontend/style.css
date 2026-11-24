@@ -455,3 +455,15 @@ fieldset button.primary {
 }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 12px); } }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+
+/* The admin's debug drawer on the job page (E16). */
+.debug { margin-top: 2rem; }
+.debug-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; }
+.debug-grid figure { margin: 0; }
+.debug-grid img { width: 100%; height: auto; display: block; border-radius: 6px;
+  background: repeating-conic-gradient(#ccc 0% 25%, #fff 0% 50%) 50% / 16px 16px; }
+.debug-grid figcaption { font-size: 0.85rem; margin-top: 0.25rem; }
+.debug-grid .verdict { font-size: 0.85rem; margin: 0.25rem 0; }
+.debug-grid .verdict-pass { color: #1a7f37; }
+.debug-grid .verdict-fail { color: #c62828; font-weight: 600; }
+.debug-grid .verdict-no-answer { color: #8a6d00; }

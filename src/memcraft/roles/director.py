@@ -36,6 +36,7 @@ from memcraft.engines.keyframes import (
     CLEAN_PERSON,
     PROP_FROM_PHOTO,
     PROP_NEW,
+    compose_prompt,
     edit_prompt,
     matching_prompt,
 )
@@ -388,8 +389,17 @@ class Keyframe:
     references: list[int | str]
     # The words of the prop pictures among the references, in order (start keyframe only).
     props: list[str] = field(default_factory=list)
+    # "compose": put together from the background, people and prop pictures (E16).
+    layout: str = "photos"
+    # The director moved the camera for this keyframe (compose layout).
+    camera_moves: bool = False
 
     def prompt(self, bible: dict[str, Any]) -> str:
+        if self.layout == "compose":
+            people = len(self.references) - 1 - len(self.props)
+            return compose_prompt(
+                self.action, people=people, props=self.props, camera_moves=self.camera_moves
+            )
         people = len(self.references) - len(self.props) - ("start" in self.references)
         if self.references and self.references[0] == "start":
             return edit_prompt(
@@ -409,13 +419,15 @@ class Keyframe:
 class AssetPicture:
     """A picture drawn before the keyframes (E16): ``kind`` "clean" is photo ``photo`` with
     its people alone and empty-handed, "prop" is one prop alone, from photo ``photo`` or, with
-    None, drawn on a plain grey canvas."""
+    None, drawn on a plain grey canvas, "background" the empty place on that canvas. With
+    ``cutout`` it is cut out of its background and kept as RGBA."""
 
     kind: str
     photo: int | None
     words: str
     seed: int
     prompt: str
+    cutout: bool = False
 
 
 @dataclass(frozen=True)
@@ -571,10 +583,24 @@ KEYFRAME_LABELS = (
     "KEYFRAME END",
 )
 # Asked for since director-keyframes v2; a job directed with an older prompt has no props.
-OPTIONAL_KEYFRAME_LABELS = ("PROPS", "CLEAN", "PROP PICTURES")
-# At most this many prop pictures; with the photos they must fit the keyframe model's 4 pictures.
+OPTIONAL_KEYFRAME_LABELS = ("PROPS", "CLEAN", "PROP PICTURES", "CAMERA MIDDLE", "CAMERA END")
+# At most this many prop pictures; with the photos they must fit the keyframe model's pictures:
+# 4 with the start keyframe layout, 6 when keyframes are put together from asset pictures.
 MAX_PROP_PICTURES = 2
 MAX_REFERENCES = 4
+MAX_COMPOSE_REFERENCES = 6
+_SAME_CAMERA = re.compile(r"^(?:same|unchanged|no change|static|none|-)\b", re.I)
+
+
+def camera_for(value: str, start: str) -> tuple[str, bool]:
+    """A keyframe's camera sentence from CAMERA MIDDLE or CAMERA END, and whether it moved:
+    "same" (or nothing) repeats the start CAMERA word for word."""
+    value = value.strip()
+    if not value or _SAME_CAMERA.match(value) or value == start:
+        return start, False
+    return value, True
+
+
 _NO_PROPS = re.compile(r"^(?:none|no props|n/?a|-)\.?$", re.I)
 
 
@@ -590,11 +616,19 @@ def asset_pictures(
     bible: dict[str, Any],
     photos: int,
     seed: int,
+    *,
+    background: str | None = None,
 ) -> tuple[list[AssetPicture], list[str]]:
     """The pictures to draw before the keyframes, from the CLEAN and PROP PICTURES sections,
-    and notes on what was left out."""
+    and notes on what was left out.
+
+    With ``background`` (the prompt of the empty place) the keyframes are put together from
+    asset pictures (E16, Denys's layout): the background first, then every photo's people
+    alone and cut out, then the props cut out."""
     notes: list[str] = []
     numbers = sorted(n for n in tags_in(clean) if 1 <= n <= photos)
+    if background is not None:
+        numbers = list(range(1, photos + 1))
     props: list[tuple[str, int | None]] = []
     for part in re.split(r"[|;]", prop_pictures):
         part = " ".join(part.split()).strip(" .")
@@ -614,7 +648,8 @@ def asset_pictures(
             continue
         if all(known != w for w, _ in props):
             props.append((known, photo))
-    room = max(0, min(MAX_PROP_PICTURES, MAX_REFERENCES - photos))
+    limit = MAX_COMPOSE_REFERENCES - 1 if background is not None else MAX_REFERENCES
+    room = max(0, min(MAX_PROP_PICTURES, limit - photos))
     if len(props) > room:
         notes.append(f"PROP PICTURES: {len(props) - room} left out (at most {room})")
         props = props[:room]
@@ -625,19 +660,22 @@ def asset_pictures(
             numbers.append(photo)
             notes.append(f"CLEAN: <image{photo}> added, a prop picture comes from it")
     numbers.sort()
-    seeds = render_seeds(seed * 31 + 17, len(numbers) + len(props))
+    seeds = render_seeds(seed * 31 + 17, len(numbers) + len(props) + 1)
+    cut = background is not None
     pictures: list[AssetPicture] = []
+    if background is not None:
+        pictures.append(AssetPicture("background", None, "", seeds.pop(), background))
     for number in numbers:
         looks = "; ".join(
             f"{p['tag']}: {p['look']}" if p.get("look") else p["tag"]
             for p in bible["people"]
             if p.get("image") == number and p.get("tag")
         )
-        text = CLEAN_PERSON.format(looks=looks or "as in <image1>")
-        pictures.append(AssetPicture("clean", number, looks, seeds[len(pictures)], text))
+        text = CLEAN_PERSON.format(looks=looks or "people or animals")
+        pictures.append(AssetPicture("clean", number, looks, seeds.pop(0), text, cut))
     for words, photo in props:
         text = (PROP_FROM_PHOTO if photo else PROP_NEW).format(words=words)
-        pictures.append(AssetPicture("prop", photo, words, seeds[len(pictures)], text))
+        pictures.append(AssetPicture("prop", photo, words, seeds.pop(0), text, cut))
     return pictures, notes
 
 
@@ -730,8 +768,22 @@ def direct_keyframes(
     # With 3 people the start keyframe as a reference lost a face and added noise (E0).
     chained = (len(bible["people"]) or count) <= CHAINED_PEOPLE
     seeds = render_seeds(seed, 3 + len(counts))
+    compose = "background" in found
+    background = (
+        fill(
+            found["background"],
+            {"place": bible["place"], "light": bible["light"], "camera": bible["camera"]},
+        )
+        if compose
+        else None
+    )
     assets, notes = asset_pictures(
-        sections.get("CLEAN", ""), sections.get("PROP PICTURES", ""), bible, count, seeds[0]
+        sections.get("CLEAN", ""),
+        sections.get("PROP PICTURES", ""),
+        bible,
+        count,
+        seeds[0],
+        background=background,
     )
     problems += notes
     clean = {a.photo: f"asset:{i}" for i, a in enumerate(assets) if a.kind == "clean"}
@@ -754,6 +806,24 @@ def direct_keyframes(
             problems.append(f"KEYFRAME {at.upper()}: {replaced} name tags replaced")
         body, notes = name_people(body, bible["people"], count)
         problems += [f"KEYFRAME {at.upper()}: {note}" for note in notes]
+        if compose:
+            # E16: every keyframe from the background, people and prop pictures; the start
+            # keyframe is no reference. The director may move the camera per keyframe.
+            camera, moves = camera_for(sections.get(f"CAMERA {at.upper()}", ""), bible["camera"])
+            body = framed(body, {**bible, "camera": camera}, tail=tail)
+            keyframes.append(
+                Keyframe(
+                    at=at,
+                    action=body,
+                    frame=positions[at],
+                    seed=seeds[index],
+                    references=[f"asset:{i}" for i in range(len(assets))],
+                    props=prop_words,
+                    layout="compose",
+                    camera_moves=moves,
+                )
+            )
+            continue
         body = framed(body, bible, same_framing=at != "start" and not chained, tail=tail)
         references: list[int | str]
         if not assets:

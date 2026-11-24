@@ -15,6 +15,7 @@ from typing import Annotated, Any
 
 import webauthn
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -24,7 +25,11 @@ from webauthn.helpers import structs
 from memcraft import queue
 from memcraft.config import Settings, get_settings
 from memcraft.models import (
+    ASSET_ORDINAL,
     AdminSession,
+    Asset,
+    AssetKind,
+    AssetStore,
     AuthChallenge,
     ChallengePurpose,
     Job,
@@ -42,6 +47,7 @@ from memcraft.models import (
     UserStatus,
 )
 from memcraft.queue import StatusConflictError, TransitionError
+from memcraft.storage import StorageError
 from memcraft.web.auth import ApprovedUser, SessionDep, StoreDep
 from memcraft.worker import pause
 
@@ -506,3 +512,138 @@ def set_pause(admin: AdminUser, session: SessionDep, body: Annotated[PauseIn, Bo
     pause.set_paused(session, body.paused)
     session.commit()
     return _pause_state(session)
+
+
+# E16: the debug drawer on the job page shows what the keyframe step drew.
+
+
+class DebugPicture(BaseModel):
+    label: str
+    ordinal: int
+    asset_id: uuid.UUID | None
+    # False for a picture saved before E16 in the private store, which the web cannot read.
+    available: bool
+    prompt: str | None = None
+    # The critic's face verdict: "pass", "fail" or "no answer"; None when it did not look.
+    verdict: str | None = None
+    reason: str | None = None
+
+
+class DebugOut(BaseModel):
+    title: str | None
+    bible: dict[str, Any] | None
+    problems: list[str]
+    pictures: list[DebugPicture]
+
+
+def _picture_label(ordinal: int, scenario: dict[str, Any]) -> tuple[str, str | None]:
+    if ordinal >= ASSET_ORDINAL:
+        assets = scenario.get("assets") or []
+        index = ordinal - ASSET_ORDINAL
+        asset = assets[index] if index < len(assets) else {}
+        kind = asset.get("kind", "picture")
+        name = {"background": "background", "clean": "character", "prop": "prop"}.get(kind, kind)
+        detail = asset.get("words") or ""
+        if kind == "clean" and asset.get("photo"):
+            detail = f"photo {asset['photo']}"
+        return f"{name}: {detail}".rstrip(": "), asset.get("prompt")
+    if ordinal >= 100:
+        return f"last frame of run {ordinal - 99}", None
+    keyframes = scenario.get("keyframes") or []
+    keyframe = keyframes[ordinal] if ordinal < len(keyframes) else {}
+    return f"keyframe {keyframe.get('at', ordinal + 1)}", keyframe.get("prompt")
+
+
+@router.get("/jobs/{job_id}/debug")
+def job_debug(job_id: uuid.UUID, admin: AdminUser, session: SessionDep) -> DebugOut:
+    """Background, people and prop pictures and keyframes of a job, newest try of each."""
+    if session.get(Job, job_id) is None:
+        raise HTTPException(404, "not found")
+    scenario: dict[str, Any] = {}
+    row = session.scalar(
+        select(JobStep)
+        .where(
+            JobStep.job_id == job_id,
+            JobStep.step == StepName.SCENARIO,
+            JobStep.status == StepStatus.DONE,
+        )
+        .order_by(JobStep.attempt.desc())
+        .limit(1)
+    )
+    if row is not None and row.output:
+        scenario = row.output
+    verdicts = _verdicts(session, job_id)
+    assets = session.scalars(
+        select(Asset)
+        .where(Asset.job_id == job_id, Asset.kind == AssetKind.KEYFRAME)
+        .order_by(Asset.ordinal, Asset.created_at)
+    ).all()
+    newest: dict[int, Asset] = {}
+    for asset in assets:
+        newest[asset.ordinal or 0] = asset
+    # The asset pictures first, as they are drawn, then the keyframes and the last frames.
+    order = sorted(newest, key=lambda o: (o < ASSET_ORDINAL, o))
+    pictures = []
+    for ordinal in order:
+        asset = newest[ordinal]
+        label, prompt = _picture_label(ordinal, scenario)
+        pictures.append(
+            DebugPicture(
+                label=label,
+                ordinal=ordinal,
+                asset_id=asset.id,
+                available=asset.store == AssetStore.SHARED,
+                prompt=prompt,
+                **verdicts.get(ordinal, {}),
+            )
+        )
+    return DebugOut(
+        title=scenario.get("title"),
+        bible=scenario.get("bible"),
+        problems=list(scenario.get("problems") or []),
+        pictures=pictures,
+    )
+
+
+def _verdicts(session: Session, job_id: uuid.UUID) -> dict[int, dict[str, str | None]]:
+    """The newest check's face verdicts by keyframe ordinal; a last-frame check goes with the
+    last frame of the first run (keyframe 100)."""
+    check = session.scalar(
+        select(JobStep)
+        .where(
+            JobStep.job_id == job_id,
+            JobStep.step == StepName.CHECK,
+            JobStep.status == StepStatus.DONE,
+        )
+        .order_by(JobStep.attempt.desc())
+        .limit(1)
+    )
+    output = (check.output if check is not None else None) or {}
+
+    def one(entry: dict[str, Any]) -> dict[str, str | None]:
+        face = entry.get("face")
+        verdict = "no answer" if face is None else ("pass" if face else "fail")
+        return {"verdict": verdict, "reason": entry.get("face_why") or entry.get("error") or None}
+
+    if output.get("kind") == "keyframes":
+        return {e["ordinal"]: one(e) for e in output.get("keyframes", []) if "ordinal" in e}
+    if output.get("kind") == "last_frame" and "face" in output:
+        return {100: one(output)}
+    return {}
+
+
+@router.get("/files/{asset_id}")
+def admin_file(
+    asset_id: uuid.UUID, admin: AdminUser, session: SessionDep, store: StoreDep
+) -> FileResponse:
+    """A keyframe or asset picture of any job, for the debug drawer."""
+    asset = session.get(Asset, asset_id)
+    if asset is None or asset.kind != AssetKind.KEYFRAME or asset.store != AssetStore.SHARED:
+        raise HTTPException(404, "not found")
+    try:
+        path = store.path_for(asset)
+    except StorageError:
+        raise HTTPException(503, "files are not available right now") from None
+    if not path.is_file():
+        raise HTTPException(404, "not found")
+    return FileResponse(path, media_type=asset.mime, headers={"Cache-Control": "private, no-store"})

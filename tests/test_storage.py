@@ -219,7 +219,7 @@ def test_save_flushes_a_pending_job_first(store, session):
 
 def test_web_cannot_save_private_files(web, session):
     with pytest.raises(StoreUnavailableError):
-        save(web, session, new_job(session), AssetKind.KEYFRAME)
+        save(web, session, new_job(session), AssetKind.CLIP)
 
 
 def test_unknown_type_is_refused(store, session, roots):

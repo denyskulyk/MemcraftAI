@@ -55,6 +55,7 @@ from memcraft.engines import (
     rules_for,
 )
 from memcraft.models import (
+    ASSET_ORDINAL,
     Asset,
     AssetKind,
     EngineSlot,
@@ -92,8 +93,7 @@ GEMMA_SERVICE = "gemma"
 LAST_FRAME_ORDINAL = 100
 JOINED_ORDINAL = 100
 KEYFRAME_NAMES = ("start", "middle", "end")
-# Keyframe ordinals from here on are the scenario's asset pictures (E16).
-ASSET_ORDINAL = 200
+# Keyframe ordinals from ASSET_ORDINAL (memcraft.models) on are the scenario's asset pictures.
 # The critic sees every picture at the size E0.14 tested.
 CRITIC_SIZE = (540, 960)
 FPS = 30
@@ -452,6 +452,7 @@ class KeyframeStep:
                 seed=keyframe["seed"],
                 extra_references=extra,
                 folder=folder_of(ctx.job_id),
+                cutout=bool(is_asset and keyframe.get("cutout")),
             )
             with deps.comfy.client() as client:
                 result = adapter.render(

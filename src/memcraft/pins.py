@@ -24,7 +24,7 @@ PROJECT = Path(__file__).resolve().parents[2]
 PINS_FILE = PROJECT / "deploy" / "pins.json"
 CACHE_FILE = PROJECT / "data" / "pins-cache.json"
 # The two workflows the worker runs; their model files are pinned.
-PINNED_WORKFLOWS = ("keyframe-qwen-image-2.1-v1", "clip-ltx-2.5-v1")
+PINNED_WORKFLOWS = ("keyframe-qwen-image-2.1-v2", "clip-ltx-2.5-v1")
 
 # Loader node and input -> the model folders ComfyUI searches for that file.
 LOADERS: dict[tuple[str, str], tuple[str, ...]] = {
@@ -36,6 +36,7 @@ LOADERS: dict[tuple[str, str], tuple[str, ...]] = {
     ("LoraLoader", "lora_name"): ("loras",),
     ("LoraLoaderModelOnly", "lora_name"): ("loras",),
     ("UpscaleModelLoader", "model_name"): ("upscale_models",),
+    ("LoadBackgroundRemovalModel", "bg_removal_name"): ("background_removal",),
 }
 _VERSION = re.compile(r'^\s*version\s*=\s*["\']([^"\']+)["\']', re.MULTILINE)
 
