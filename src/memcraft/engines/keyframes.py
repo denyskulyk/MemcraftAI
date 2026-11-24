@@ -13,6 +13,8 @@ megapixel (reference_size()): with two photos and the start keyframe at full siz
 from __future__ import annotations
 
 import math
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -29,6 +31,32 @@ SAME_SCENE = (
     "same objects in the same colours; only the action and expressions change. "
     "The place: {place} The light: {light} "
     "Faces come from {photos}. "
+)
+# E16 asset-first: a person whose photo holds a prop (the troll's log, wide in both hands) is drawn
+# alone and empty-handed first, and a prop the story uses is drawn alone; the keyframes take
+# those pictures instead, so the photo's grip and pose do not come back in every keyframe.
+PROP_TAKE = "Take {words} from {image}."
+ONCE = "Each person appears exactly once. "
+# Middle and end keyframes drawn as an edit of the start keyframe (when there are asset pictures).
+EDIT_SCENE = (
+    "Edit <image1>: keep the place, the light, the colours, the camera position, the shot size, "
+    "the framing and every object exactly as in <image1>. " + ONCE + "Change only the poses and "
+    "expressions as follows. The place: {place} The light: {light} Faces come from {photos}. "
+)
+CLEAN_PERSON = (
+    "Edit <image1>: the same people with exactly the same faces, hair, bodies and clothing "
+    "({looks}), standing upright in a relaxed neutral pose, arms hanging at their sides, both "
+    "hands empty and open. Remove every object they hold completely. Full body from head to "
+    "feet, plain light grey studio background, even soft light."
+)
+PROP_FROM_PHOTO = (
+    "Show only the object from <image1>: {words}. Alone and whole at its full length and size, "
+    "with the same look and colours as in <image1>, on a plain light grey studio background, "
+    "even soft light. Leave out every person and creature, no hands, no body parts."
+)
+PROP_NEW = (
+    "On the plain light grey <image1>, draw only one object: {words}. Alone and whole, in the "
+    "middle, photorealistic, even soft light. No people, no creatures, no hands, no body parts."
 )
 # Pixels of image_2 to image_4; image_1 is drawn at the canvas size.
 REFERENCE_PIXELS = 512 * 896
@@ -103,15 +131,31 @@ class KeyframeResult:
 
 
 def matching_prompt(
-    action: str, *, place: str, light: str, photos: int, start_reference: bool
+    action: str,
+    *,
+    place: str,
+    light: str,
+    photos: int,
+    start_reference: bool,
+    props: Sequence[str] = (),
 ) -> str:
     """The prompt of a keyframe: the new place first, or the start keyframe as the scene.
 
-    With ``start_reference`` the start keyframe is the reference after the photos.
+    With ``start_reference`` the start keyframe is the reference after the photos. ``props``
+    are the words of prop pictures that follow the photos (the start keyframe only).
     """
     if not 1 <= photos <= 3:
         raise LimitError("a keyframe takes 1 to 3 photos")
+    if props and start_reference:
+        raise LimitError("prop pictures go into the start keyframe only")
     tags = ", ".join(f"<image{i}>" for i in range(1, photos + 1))
+    if props:
+        takes = " ".join(
+            PROP_TAKE.format(words=words.strip(), image=f"<image{photos + i}>")
+            for i, words in enumerate(props, start=1)
+        )
+        prefix = NEW_PLACE.format(place=place.strip(), light=light.strip(), photos=tags)
+        return f"{prefix}{takes} {ONCE}{action.strip()}"
     if start_reference:
         # The place and light sentences too, word for word as in the start keyframe: the start
         # keyframe alone goes in at reference size and the light drifted (E16).
@@ -121,6 +165,16 @@ def matching_prompt(
     else:
         prefix = NEW_PLACE.format(place=place.strip(), light=light.strip(), photos=tags)
     return prefix + action.strip()
+
+
+def edit_prompt(action: str, *, place: str, light: str, photos: int) -> str:
+    """A middle or end keyframe as an edit of the start keyframe, which is <image1>; the photos
+    (or their clean pictures) follow, so the action's <imageN> move up by one (E16)."""
+    if not 1 <= photos <= 3:
+        raise LimitError("a keyframe takes 1 to 3 photos")
+    tags = ", ".join(f"<image{i}>" for i in range(2, photos + 2))
+    moved = re.sub(r"<image([1-9])>", lambda m: f"<image{int(m.group(1)) + 1}>", action.strip())
+    return EDIT_SCENE.format(place=place.strip(), light=light.strip(), photos=tags) + moved
 
 
 def match_colours(image: Path, reference: Path, strength: float = 1.0) -> None:

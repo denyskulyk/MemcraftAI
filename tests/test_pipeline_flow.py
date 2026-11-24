@@ -131,6 +131,7 @@ RUN 2: He floats higher and waves. Single take, no cuts.
 class FakeDirector:
     def __init__(self):
         self.calls = 0
+        self.extra = ""  # sections put before KEYFRAME START, like PROPS, CLEAN, PROP PICTURES
 
     def __call__(self, client, folder, should_cancel):
         def run(system, user, images, seed):
@@ -138,6 +139,7 @@ class FakeDirector:
             # The bible lists one person per photo.
             head, people, tail = SECTIONS.partition(SECTIONS.splitlines()[1])
             listed = " | ".join(people.removeprefix("PEOPLE: ").split(" | ")[: len(images)])
+            tail = tail.replace("KEYFRAME START:", f"{self.extra}KEYFRAME START:")
             return f"{head}PEOPLE: {listed}{tail}"
 
         return run
@@ -500,6 +502,34 @@ def test_short_two_photos_with_idea(engine, session, store, fakes):
     assert check["kind"] == "keyframes" and check["faces_ok"] is True
     assert [entry["face"] for entry in check["keyframes"]] == [True, True]
     assert fakes.gemma.calls.count("critic") == 2
+
+
+def test_asset_pictures_come_first_and_replace_the_photo(engine, session, store, fakes):
+    # E16: the man's photo holds a log; he is drawn empty-handed and the log alone first.
+    fakes.director.extra = (
+        "PROPS: a giant oak log with rough bark\nCLEAN: <image1>\n"
+        "PROP PICTURES: a giant oak log with rough bark from <image1>\n"
+    )
+    job = new_job(session, store, photos=2, idea="he swings a log")
+    worker(engine, fakes, store).drain()
+    assert status_of(session, job) is S.PREVIEW_READY
+    clean, prop, start, end = fakes.adapters.keyframes
+    photos = sorted(assets(session, job, AssetKind.PHOTO), key=lambda a: a.ordinal)
+    first, second = (store.path_for(a) for a in photos)
+    drawn = {a.ordinal: store.path_for(a) for a in assets(session, job, AssetKind.KEYFRAME)}
+    assert clean.photos == (first,) and clean.prompt.startswith("Edit <image1>: the same people")
+    assert prop.photos == (first,) and prop.prompt.startswith(
+        "Show only the object from <image1>: a giant"
+    )
+    assert start.photos == (drawn[200], second, drawn[201]) and start.extra_references == ()
+    assert "Take a giant oak log with rough bark from <image3>." in start.prompt
+    assert end.photos == (drawn[0], drawn[200], second) and end.extra_references == ()
+    assert end.prompt.startswith("Edit <image1>: keep the place")
+    (clip,) = fakes.adapters.clips
+    assert clip.first_frame == drawn[0] and [g.image for g in clip.guides] == [drawn[1]]
+    check = output(session, job, StepName.CHECK)
+    assert len(check["keyframes"]) == 2  # the critic judges keyframes, not asset pictures
+    assert output(session, job, StepName.KEYFRAME, 200)["at"] == "asset"
 
 
 def test_three_people_draw_middle_and_end_from_the_photos(engine, session, store, fakes):

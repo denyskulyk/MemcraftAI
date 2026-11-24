@@ -29,10 +29,14 @@ from memcraft.engines.clips import (
     ReleaseResult,
 )
 from memcraft.engines.keyframes import (
+    CLEAN_PERSON,
+    PROP_FROM_PHOTO,
+    PROP_NEW,
     KeyframeLimits,
     KeyframeRequest,
     KeyframeResult,
     QwenImageKeyframes,
+    edit_prompt,
     match_colours,
     matching_prompt,
 )
@@ -52,7 +56,10 @@ from memcraft.engines.recipes import (
 
 __all__ = [
     "ADAPTERS",
+    "CLEAN_PERSON",
     "LAST",
+    "PROP_FROM_PHOTO",
+    "PROP_NEW",
     "RULES",
     "ClipLimits",
     "ClipRequest",
@@ -73,6 +80,7 @@ __all__ = [
     "RunOptions",
     "RunPlan",
     "adapter_for",
+    "edit_prompt",
     "frames_for",
     "is_8n_plus_1",
     "match_colours",

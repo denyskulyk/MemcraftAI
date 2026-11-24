@@ -72,7 +72,11 @@ def job_fraction(
     before = 0.0
     for name, weight in weights.items():
         if name == step:
-            share = (min(ordinal, count - 1) + min(1.0, max(0.0, fraction))) / max(count, 1)
+            if ordinal >= 200:
+                # Asset pictures (keyframe 200+, steps.ASSET_ORDINAL) come before keyframe 0.
+                share = 0.0
+            else:
+                share = (min(ordinal, count - 1) + min(1.0, max(0.0, fraction))) / max(count, 1)
             return min(1.0, (before + weight * share) / total)
         before += weight
     # Not weighted: the steps before it in the run order are unknown, so keep the last value.

@@ -7,8 +7,10 @@ TITLE: short title
 PEOPLE: for each photo in order "<image1>: the <short visual tag>, <hair, face, clothing>", separated by " | "
 PLACE: one sentence, the place where the video happens; it may differ from the backgrounds of the photos
 LIGHT: one sentence
-CAMERA: one sentence: the shot size (close-up, medium shot from the waist up, full body, or wide) and the camera position and height. It never changes: the app repeats this sentence word for word in every keyframe. So choose it for the whole story: if feet, jumping, flying, falling or walking matter in any keyframe, use a full-body shot with room around the people from the start
-PROPS: the objects the story needs (not clothing), each with its colour, material and size, separated by " | ", like "a black umbrella with a curved wooden handle"; "none" if there are none
+CAMERA: one sentence: the shot size (close-up, medium shot from the waist up, full body, or wide) and the camera position and height. It never changes: the app repeats this sentence word for word in every keyframe. So choose it for the whole story: if anyone stands up, walks, runs, jumps, kicks, rides, flies or falls in any keyframe, or feet matter, use a full-body shot with room around the people from the start; a waist-up shot only fits people who stay in place
+PROPS: the objects the story needs (not clothing), each with its colour, material and size, separated by " | ", like "a black umbrella with a curved wooden handle"; "none" if there are none. Each entry is one object, never a number of them like "three cigars", and describes only the object, never who holds it or where it is. An object that a photo shows keeps the colour, material and size it has in the photo: describe it from the photo
+CLEAN: the photos in which someone holds an object or stands in a pose that the story changes (a prop in the hands, a cup, a weapon, arms around a log), as <imageN> separated by " | "; "none" if there are none. The app first draws them alone, empty-handed, in a neutral standing pose, and builds the keyframes from that picture, so the story can give them any grip and pose
+PROP PICTURES: at most two objects from PROPS that people hold, swing, throw, break or use, each with its exact words from PROPS, followed by "from <imageN>" when a photo shows it, separated by " | "; "none" if there are none. The app draws each alone first and puts that picture into the keyframes
 KEYFRAME START: the first picture
 KEYFRAME MIDDLE: the picture half way
 KEYFRAME END: the last picture
@@ -19,6 +21,7 @@ Action (a swing, punch, kick, throw, hit or chase): the keyframes show before an
 Runs: one flowing paragraph each, present tense: motion between the keyframes, camera, sound. No cuts. 60 to 110 words.
 Sound in every run: loud, clear sound effects of what happens, and the people's voices with emotion: laughing, shouting, gasping, reacting. Never music: end every run with the sentence "No music."
 Russian speech: write the words in Cyrillic and mark the stressed vowel of every word with more than one syllable with a combining acute accent (U+0301), like кре́сло. Never mark stress with capital letters.
+Keep every person, animal and object that the idea names: each one is in PEOPLE or PROPS and in the keyframes where the idea needs it. Show only what can really be seen in one photo: a person cannot ride a house cat or stand inside a bottle, so choose a picture that makes the joke work, like the cat grown to the size of a horse.
 Avoid things the video model draws badly: no cranes (birds or machines), no pigeons or other birds in flight, no knives or blades.
 Everyone is an adult. Photos show real people: keep it non-sexual and clothed.
 === kind_short ===

@@ -14,6 +14,8 @@ Assets a step makes, by kind and ordinal:
 - gemma_copy n: the small JPEG of photo n (photos.make_gemma_copies)
 - keyframe 0..2: start, middle, end (jobs from before the E0 verdicts may hold a redraw too)
 - keyframe 100 + r: the real last frame of run r, where run r + 1 starts
+- keyframe 200 + k: asset picture k of the scenario (E16: a photo's people alone and
+  empty-handed, or a prop alone), drawn before the keyframes and never shown to friends
 - latent 2r, 2r + 1: the stage-1 video and audio latents of run r (the release resumes there)
 - clip r: the 544x960 preview of run r; clip 100: the joined runs of a long video
 - preview 0 (shared): the video the friend sees, saved by the planner's outcome
@@ -90,6 +92,8 @@ GEMMA_SERVICE = "gemma"
 LAST_FRAME_ORDINAL = 100
 JOINED_ORDINAL = 100
 KEYFRAME_NAMES = ("start", "middle", "end")
+# Keyframe ordinals from here on are the scenario's asset pictures (E16).
+ASSET_ORDINAL = 200
 # The critic sees every picture at the size E0.14 tested.
 CRITIC_SIZE = (540, 960)
 FPS = 30
@@ -427,23 +431,28 @@ class KeyframeStep:
         session, deps = ctx.session, self.deps
         job = session.get_one(Job, ctx.job_id)
         scenario = output_of(ctx, StepName.SCENARIO)
-        keyframe = scenario["keyframes"][ctx.ordinal]
-        photos = tuple(deps.store.path_for(photo) for photo in list_photos(session, ctx.job_id))
-        extra: tuple[Path, ...] = ()
-        if "start" in keyframe["references"]:
-            start = output_of(ctx, StepName.KEYFRAME, 0)
-            extra = (asset_path(session, deps.store, start["asset_id"]),)
+        is_asset = ctx.ordinal >= ASSET_ORDINAL
+        if is_asset:
+            keyframe = scenario["assets"][ctx.ordinal - ASSET_ORDINAL]
+            references: list[int | str] = [keyframe["photo"] or "canvas"]
+        else:
+            keyframe = scenario["keyframes"][ctx.ordinal]
+            references = list(keyframe["references"])
+        photos = [deps.store.path_for(photo) for photo in list_photos(session, ctx.job_id)]
         adapter = deps.adapter(session, job, EngineSlot.KEYFRAME)
         workflow = versions.pinned_workflow(session, job, EngineSlot.KEYFRAME)
-        request = KeyframeRequest(
-            prompt=keyframe["prompt"],
-            photos=photos,
-            seed=keyframe["seed"],
-            extra_references=extra,
-            folder=folder_of(ctx.job_id),
-        )
         deps.comfy.ensure_up()
         with work_folder(deps, ctx) as work:
+            paths = [self._reference(ctx, ref, photos, work) for ref in references]
+            # The start keyframe last is the older layout: photos, then the scene to match.
+            extra = tuple(paths[-1:]) if references[-1] == "start" else ()
+            request = KeyframeRequest(
+                prompt=keyframe["prompt"],
+                photos=tuple(paths[: len(paths) - len(extra)]),
+                seed=keyframe["seed"],
+                extra_references=extra,
+                folder=folder_of(ctx.job_id),
+            )
             with deps.comfy.client() as client:
                 result = adapter.render(
                     client,
@@ -452,7 +461,7 @@ class KeyframeStep:
                     run_options(ctx, deps.expected["keyframe"], 0.02, 0.95),
                 )
             matched = False
-            if ctx.ordinal > 0:
+            if 0 < ctx.ordinal < ASSET_ORDINAL:
                 # Middle and end keyframes take the start keyframe's brightness and tint (E16).
                 start = output_of(ctx, StepName.KEYFRAME, 0)
                 match_colours(result.image, asset_path(session, deps.store, start["asset_id"]))
@@ -462,12 +471,28 @@ class KeyframeStep:
         versions.pin_step(session, _row(ctx), workflow=workflow)
         return {
             "asset_id": str(asset.id),
-            "at": keyframe["at"],
+            "at": "asset" if is_asset else keyframe["at"],
             "seed": request.seed,
             "seconds": round(result.seconds, 1),
             "prompt_id": result.prompt_id,
             "colour_matched": matched,
         }
+
+    def _reference(self, ctx: StepContext, ref: int | str, photos: list[Path], work: Path) -> Path:
+        """The file of one reference: a photo number, "start", "asset:K" or "canvas"."""
+        session, store = ctx.session, self.deps.store
+        if isinstance(ref, int):
+            return photos[ref - 1]
+        if ref == "start":
+            return asset_path(session, store, output_of(ctx, StepName.KEYFRAME, 0)["asset_id"])
+        if ref.startswith("asset:"):
+            drawn = output_of(ctx, StepName.KEYFRAME, ASSET_ORDINAL + int(ref.split(":")[1]))
+            return asset_path(session, store, drawn["asset_id"])
+        if ref == "canvas":
+            canvas = work / "canvas.png"
+            Image.new("RGB", (768, 1344), (200, 200, 200)).save(canvas)
+            return canvas
+        raise PipelineError(f"unknown keyframe reference {ref!r}")
 
 
 @dataclass

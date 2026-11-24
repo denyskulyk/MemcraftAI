@@ -36,7 +36,14 @@ from memcraft.models import (
     StepStatus,
 )
 from memcraft.pipeline import choices
-from memcraft.pipeline.steps import MODEL_CLIPS, MODEL_KEYFRAMES, MP4, PipelineError, asset_path
+from memcraft.pipeline.steps import (
+    ASSET_ORDINAL,
+    MODEL_CLIPS,
+    MODEL_KEYFRAMES,
+    MP4,
+    PipelineError,
+    asset_path,
+)
 from memcraft.pipeline.steps import job_regime as _job_regime
 from memcraft.storage import FileStore
 from memcraft.worker.steps import PlannedStep
@@ -75,15 +82,22 @@ def render_plan(session: Session, job: Job, done: Sequence[JobStep]) -> list[Pla
     regime = _job_regime(job)
     outputs = {(row.step, row.ordinal): row.output for row in done}
     scenario = outputs.get((StepName.SCENARIO, 0))
+    assets = 0
     if scenario is not None:
         runs = len(scenario["runs"])
         keyframes = len(scenario.get("keyframes") or [])
+        assets = len(scenario.get("assets") or [])
     else:
         rules = choices.rules_for_plan(session, job, regime)
         runs = rules.runs_long if job.length is JobLength.LONG else rules.runs_short
         keyframes = (3 if runs > 1 else 2) if regime is JobRegime.KEYFRAMES else 0
     critic = choices.critic_planned(session, job)
     steps = [PlannedStep(StepName.SCENARIO, inputs={"regime": regime.value})]
+    # E16: the asset pictures come first; keyframes take them as references.
+    steps += [
+        PlannedStep(StepName.KEYFRAME, ASSET_ORDINAL + n, keyframes, {"n": ASSET_ORDINAL + n})
+        for n in range(assets)
+    ]
     steps += [PlannedStep(StepName.KEYFRAME, n, keyframes, {"n": n}) for n in range(keyframes)]
     if critic and keyframes:
         steps.append(

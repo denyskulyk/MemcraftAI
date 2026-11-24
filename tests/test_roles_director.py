@@ -807,3 +807,65 @@ def test_keyframe_prompt_keeps_actions_before_and_after():
         Path(director.__file__).parent / "prompts" / "director-keyframes-qwen3.8.txt"
     ).read_text(encoding="utf-8")
     assert "wind-up" in text and "never a pose that undoes it" in text
+
+
+WITH_ASSETS = KEYFRAMES_ONE.replace(
+    "KEYFRAME START:",
+    "PROPS: a black umbrella with a curved wooden handle | a red kite\n"
+    "CLEAN: <image1>\n"
+    "PROP PICTURES: a black umbrella with a curved wooden handle from <image1> | a red kite"
+    " | a flying saucer\n"
+    "KEYFRAME START:",
+)
+
+
+def test_asset_pictures_replace_the_photo_and_join_the_start_keyframe():
+    run_text, _ = runner(WITH_ASSETS)
+    plan = direct_keyframes(run_text, kf_prompt(), [PHOTO], "He flies away")
+    clean, umbrella, kite = plan.assets
+    assert (clean.kind, clean.photo) == ("clean", 1)
+    assert clean.prompt.startswith("Edit <image1>: the same people")
+    assert "the man in the red jacket: short curly brown hair" in clean.prompt
+    assert (umbrella.kind, umbrella.photo) == ("prop", 1)
+    assert umbrella.prompt.startswith("Show only the object from <image1>: a black umbrella")
+    assert (kite.kind, kite.photo) == ("prop", None) and kite.prompt.startswith("On the plain")
+    assert "PROP PICTURES: 'a flying saucer' is not in PROPS; left out" in plan.problems
+    start, end = plan.keyframes
+    assert start.references == ["asset:0", "asset:1", "asset:2"]
+    prompt = start.prompt(plan.bible)
+    assert "from <image1>." in prompt and "Take a red kite from <image3>." in prompt
+    assert "Each person appears exactly once." in prompt
+    assert end.references == ["start", "asset:0"]
+    later = end.prompt(plan.bible)
+    assert later.startswith("Edit <image1>: keep the place")
+    assert "Faces come from <image2>." in later
+    assert "from <image2>" in later.split("as follows.")[1]
+    assert len({a.seed for a in plan.assets}) == 3
+    assert plan.as_output()["assets"][0]["kind"] == "clean"
+
+
+def test_prop_pictures_fit_the_four_references():
+    answer = THREE_PEOPLE.replace(
+        "**KEYFRAME START:**",
+        "**PROPS:** a wooden oar | a tiny flag\n**PROP PICTURES:** a wooden oar | a tiny flag\n"
+        "**KEYFRAME START:**",
+    )
+    run_text, _ = runner(answer)
+    plan = direct_keyframes(run_text, kf_prompt(), [PHOTO, PHOTO, PHOTO], "Rowing")
+    assert [a.words for a in plan.assets] == ["a wooden oar"]
+    assert "PROP PICTURES: 1 left out (at most 1)" in plan.problems
+    assert plan.keyframes[0].references == [1, 2, 3, "asset:0"]
+
+
+def test_a_prop_from_a_photo_cleans_that_photo():
+    answer = WITH_ASSETS.replace("CLEAN: <image1>", "CLEAN: none")
+    run_text, _ = runner(answer)
+    plan = direct_keyframes(run_text, kf_prompt(), [PHOTO], "He flies away")
+    assert [(a.kind, a.photo) for a in plan.assets] == [("clean", 1), ("prop", 1), ("prop", None)]
+    assert "CLEAN: <image1> added, a prop picture comes from it" in plan.problems
+
+
+def test_without_asset_sections_the_references_stay_as_before():
+    run_text, _ = runner(KEYFRAMES_ONE)
+    plan = direct_keyframes(run_text, kf_prompt(), [PHOTO], "He flies away")
+    assert plan.assets == [] and plan.keyframes[1].references == [1, "start"]
