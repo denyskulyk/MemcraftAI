@@ -114,6 +114,7 @@ def _real(engine: Engine, args: argparse.Namespace, settings: object) -> int:
     from memcraft.pipeline.services import (
         ComfyServer,
         DirectorConfig,
+        FlashDirector,
         GemmaServer,
         LlamaDirector,
         SwapGemma,
@@ -139,6 +140,8 @@ def _real(engine: Engine, args: argparse.Namespace, settings: object) -> int:
         if args.director == "llama"
         else None
     )
+    # Regime 3 (admin only): Flash-Next in llama-swap; Gemma and the 27B server make room.
+    flash = FlashDirector(comfy, stop_first=(gemma.stop, *([director.release] if director else [])))
     deps = Deps(
         store=store,
         comfy=comfy,
@@ -146,6 +149,7 @@ def _real(engine: Engine, args: argparse.Namespace, settings: object) -> int:
         work_dir=PROJECT / "data" / "work",
         workflows_dir=PROJECT / "workflows",
         director=director,
+        flash_director=flash,
     )
 
     def unload(lane: JobLane) -> None:

@@ -15,6 +15,7 @@ const ACCESS = {
 const photos = [];
 const notes = new Map();
 let uploading = false;
+let isAdmin = false;
 
 const byId = (id) => document.getElementById(id);
 const DETECT_SIDE = 1024; // the browser's own face check sees the photo at most this large
@@ -340,6 +341,13 @@ function ideaChanged() {
   }
   if (box.textContent !== text) box.textContent = text;
   box.hidden = !text;
+  byId("idea-needed").hidden = !(regime3() && !byId("idea").value.trim());
+  byId("confirm").disabled = !ready();
+}
+
+// Admins only: regime 3 takes 1 to 3 photos and needs an idea.
+function regime3() {
+  return isAdmin && byId("regime3").checked;
 }
 
 // Once per photo: where the faces are. Then every move of the frame checks them in JS.
@@ -414,6 +422,7 @@ function ready() {
     !uploading &&
     photos.length >= 1 &&
     photos.length <= MAX_PHOTOS &&
+    (!regime3() || byId("idea").value.trim().length > 0) &&
     photos.every((photo) => photo.frame && photo.frame.usable && !photo.error && !photo.nameError)
   );
 }
@@ -433,14 +442,16 @@ async function updateNote() {
     note.textContent = "Add a photo to see how your video will be made.";
     return;
   }
-  const key = `photos=${photos.length}&length=${encodeURIComponent(choice("length"))}`;
+  const noteKey = () =>
+    `photos=${photos.length}&length=${encodeURIComponent(choice("length"))}` +
+    (regime3() ? "&regime=regime3" : "");
+  const key = noteKey();
   if (!notes.has(key)) {
     const answer = await fetch(`/api/regime-note?${key}`);
     if (!answer.ok) throw new Error(`regime-note answered ${answer.status}`);
     notes.set(key, await answer.json());
   }
-  const current = `photos=${photos.length}&length=${encodeURIComponent(choice("length"))}`;
-  if (current === key) note.textContent = notes.get(key).note;
+  if (noteKey() === key) note.textContent = notes.get(key).note;
 }
 
 function problemText(status, body) {
@@ -459,6 +470,7 @@ function submit(event) {
   form.append("length", choice("length"));
   form.append("quality", choice("quality"));
   form.append("idea", byId("idea").value);
+  if (regime3()) form.append("regime", "regime3");
   if (photos.some((photo) => photo.names.length)) {
     form.append("names", JSON.stringify(photos.map((photo) => photo.names)));
   }
@@ -552,6 +564,12 @@ async function start() {
     return;
   }
   status.hidden = true;
+  isAdmin = me.role === "admin";
+  byId("admin-box").hidden = !isAdmin;
+  byId("regime3").addEventListener("change", () => {
+    ideaChanged();
+    changed();
+  });
   byId("form").hidden = false;
   byId("files").addEventListener("change", (event) => {
     addFiles(Array.from(event.target.files));

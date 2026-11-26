@@ -821,3 +821,52 @@ def test_a_background_with_people_is_drawn_again(engine, session, store, fakes):
     backgrounds = [k for k in fakes.adapters.keyframes if k.prompt.startswith("The plain grey")]
     assert [k.seed for k in backgrounds] == [backgrounds[0].seed + n for n in (0, 1, 3)]
     assert fakes.adapters.detects.count("person") == 2
+
+
+class FakeFlash:
+    """Regime 3's Flash-Next director: the same answers as FakeDirector, streamed in pieces."""
+
+    def __init__(self, director):
+        self.run = director(None, "", lambda: False)
+        self.events = []
+
+    @contextlib.contextmanager
+    def session(self, on_piece=None):
+        def runner(system, user, images, seed):
+            self.events.append("call")
+            for piece in range(1, 17):
+                on_piece(piece)
+            return self.run(system, user, images, seed)
+
+        try:
+            yield runner
+        finally:
+            self.events.append("unload")
+
+
+@pytest.mark.compose
+def test_regime3_directs_with_flash_and_skips_inventory_sam_and_critic(
+    engine, session, store, fakes
+):
+    fakes.director.inventory = "<image1>: a man | holds: a log"
+    fakes.director.extra = "PROPS: a giant oak log\nPROP PICTURES: a giant oak log from <image1>\n"
+    fakes.adapters.objects = {"log", "person"}
+    flash = FakeFlash(fakes.director)
+    fakes.deps.flash_director = flash
+    job = new_job(session, store, photos=2, idea="he swings a log")
+    session.execute(update(Job).where(Job.id == job.id).values(regime=JobRegime.REGIME3))
+    session.commit()
+    worker(engine, fakes, store).drain()
+    assert status_of(session, job) is S.PREVIEW_READY
+    # One director call, no inventory; then Flash-Next is unloaded for the keyframes.
+    assert flash.events == ["call", "unload"] and fakes.director.calls == 1
+    assert fakes.adapters.detects == []  # no SAM, also not on the background
+    scenario = output(session, job, StepName.SCENARIO)
+    assert "inventory" not in scenario and scenario["critic_engine_id"] is None
+    assert scenario["recipe"]["name"] == "keyframes" and scenario["regime"] == "regime3"
+    kinds = [(a["kind"], a["photo"]) for a in scenario["assets"]]
+    assert kinds[:3] == [("background", None), ("cut", 1), ("cut", 2)]
+    assert all(kind != "prop" for kind, _ in kinds)
+    assert not [s for s in steps_of(session, job) if s[0] is StepName.CHECK]
+    session.expire_all()
+    assert session.get(Job, job.id).critic_engine_id is None

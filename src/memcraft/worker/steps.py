@@ -169,7 +169,7 @@ class DryPlanner:
         if job.status in (JobStatus.RELEASE_QUEUED, JobStatus.RELEASING):
             return [PlannedStep(StepName.RELEASE)]
         steps = [PlannedStep(StepName.SCENARIO, inputs={"regime": _regime(job)})]
-        if job.regime is JobRegime.KEYFRAMES:
+        if job.regime in (JobRegime.KEYFRAMES, JobRegime.REGIME3):
             steps += [
                 PlannedStep(StepName.KEYFRAME, n, self.clips, {"n": n}) for n in range(self.clips)
             ]

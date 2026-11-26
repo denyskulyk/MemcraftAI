@@ -48,6 +48,13 @@ RENDER_WEIGHTS: Mapping[JobRegime, Mapping[StepName, float]] = {
         StepName.CLIP: 0.55,
         StepName.JOIN: 0.10,
     },
+    # Regime 3: keyframes without a check.
+    JobRegime.REGIME3: {
+        StepName.SCENARIO: 0.05,
+        StepName.KEYFRAME: 0.30,
+        StepName.CLIP: 0.55,
+        StepName.JOIN: 0.10,
+    },
 }
 
 

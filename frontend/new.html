@@ -45,6 +45,15 @@
           <label class="choice"><input type="radio" name="quality" value="fhd1080"> 1080p</label>
         </fieldset>
 
+        <fieldset id="admin-box" hidden>
+          <legend>Admin</legend>
+          <label class="choice"><input type="checkbox" id="regime3"> Regime 3</label>
+          <p class="hint">
+            Flash-Next plans with thinking on, no inventory or SAM check, people cut out as
+            they are, no critic. 1 to 3 photos, and the idea is required.
+          </p>
+        </fieldset>
+
         <section>
           <h2><label for="idea">4. Your idea (optional)</label></h2>
           <p id="idea-hint" class="hint">
@@ -59,6 +68,7 @@
             aria-describedby="idea-hint idea-count idea-tags"></textarea>
           <p id="idea-count" class="hint counter" aria-live="polite"></p>
           <p id="idea-tags" class="warning" role="status" hidden></p>
+          <p id="idea-needed" class="warning" role="status" hidden>Regime 3 needs an idea.</p>
         </section>
 
         <section>

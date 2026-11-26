@@ -25,7 +25,7 @@ import httpx
 
 from memcraft.comfy import DEFAULT_URL, ComfyClient, check_url
 from memcraft.roles.gemma import GemmaClient
-from memcraft.roles.llama_text import LlamaTextRunner
+from memcraft.roles.llama_text import LlamaTextRunner, ThinkingTextRunner
 from memcraft.worker.watchdog import NOT_OURS
 
 if TYPE_CHECKING:
@@ -508,6 +508,61 @@ class SwapGemma:
     @property
     def running(self) -> bool:
         return False
+
+
+FLASH_MODEL = "qwen-flash-next-strata"
+
+
+class FlashDirector:
+    """Regime 3's director: Qwen3.8 Flash-Next IQ3_XXS on Strata, llama-swap's
+    "qwen-flash-next-strata" model (128K context, pictures, thinking on), 2026-11-26.
+
+    It needs ~10 GB of VRAM and ~47 GB of RAM, so before a call ComfyUI frees its models and
+    Gemma (memcraft-gemma, which llama-swap keeps loaded in its own group) and the 27B
+    director's llama-server stop. Leaving `session()` unloads the model in llama-swap at once
+    (its own ttl is 30 minutes) so the keyframes get the memory back. `on_piece` gets the
+    number of streamed pieces, for the step's progress."""
+
+    def __init__(
+        self,
+        comfy: ComfyLikeFree,
+        *,
+        stop_first: tuple[Callable[[], None], ...] = (),
+        url: str = LLAMA_SWAP_URL,
+        model: str = FLASH_MODEL,
+        key_file: Path | None = None,
+    ) -> None:
+        self.comfy = comfy
+        self.stop_first = stop_first
+        self.swap = SwapGemma(url, model, key_file)
+        self._loaded = False
+
+    def _up(self) -> None:
+        if not self._loaded:
+            stop_all(self.comfy.free, *self.stop_first)
+            self._loaded = True
+
+    def runner(self, on_piece: Callable[[int], None] | None = None) -> ThinkingTextRunner:
+        return ThinkingTextRunner(
+            self.swap.url,
+            model=self.swap.model,
+            api_key=self.swap._key(),
+            before_call=self._up,
+            on_piece=on_piece,
+        )
+
+    def release(self) -> None:
+        self.swap.stop()
+        self._loaded = False
+
+    @contextlib.contextmanager
+    def session(
+        self, on_piece: Callable[[int], None] | None = None
+    ) -> Iterator[ThinkingTextRunner]:
+        try:
+            yield self.runner(on_piece)
+        finally:
+            self.release()
 
 
 def stop_all(*stoppers: Callable[[], None]) -> None:

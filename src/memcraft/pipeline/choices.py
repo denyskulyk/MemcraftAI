@@ -48,7 +48,9 @@ GEMMA_CRITIC_LIMITS = {"runs_on": "cpu", "looks_at": ["keyframes", "last frames"
 
 
 def chosen_recipe(session: Session, regime: JobRegime) -> Recipe | None:
-    """The recipe a new render of this regime gets, or None if nothing fits. Reads only."""
+    """The recipe a new render of this regime gets, or None if nothing fits. Reads only.
+    Regime 3 renders with the keyframes recipes."""
+    regime = regime.recipe_regime
     row = session.get(Setting, ACTIVE_RECIPES)
     named = row.value.get(regime.value) if row is not None and isinstance(row.value, dict) else None
     if named:
@@ -64,6 +66,7 @@ def chosen_recipe(session: Session, regime: JobRegime) -> Recipe | None:
 
 def rules_for_plan(session: Session, job: Job, regime: JobRegime) -> RecipeRules:
     """The rules that cut the job into keyframes and runs: of its pinned recipe, if any."""
+    regime = regime.recipe_regime
     recipe = session.get(Recipe, job.recipe_id) if job.recipe_id else None
     if recipe is None:
         recipe = chosen_recipe(session, regime)
@@ -79,6 +82,7 @@ def render_recipe(session: Session, job: Job, regime: JobRegime, workflows_dir: 
     """The pinned recipe, or the one to pin now (registering the defaults if none is active)."""
     if job.recipe_id is not None:
         return session.get_one(Recipe, job.recipe_id)
+    regime = regime.recipe_regime
     recipe = chosen_recipe(session, regime)
     if recipe is None:
         log.warning("no active %s recipe: registering the engines' defaults", regime.value)
@@ -89,7 +93,10 @@ def render_recipe(session: Session, job: Job, regime: JobRegime, workflows_dir: 
 
 
 def critic_planned(session: Session, job: Job) -> bool:
-    """Whether the job's plan has a check: by its pin once pinned, else by the setting."""
+    """Whether the job's plan has a check: by its pin once pinned, else by the setting.
+    Regime 3 never has one."""
+    if job.regime is JobRegime.REGIME3:
+        return False
     if job.recipe_id is not None:
         return job.critic_engine_id is not None
     row = session.get(Setting, critic_role.SETTING)

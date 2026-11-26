@@ -53,6 +53,14 @@ class JobLane(enum.StrEnum):
 class JobRegime(enum.StrEnum):
     MULTISHOT = "multishot"
     KEYFRAMES = "keyframes"
+    # Admin only (2026-11-26): 1 to 3 photos and a typed idea; Qwen3.8 Flash-Next directs with
+    # thinking on, no inventory, no SAM, people cut out 1:1, no critic. Uses keyframes recipes.
+    REGIME3 = "regime3"
+
+    @property
+    def recipe_regime(self) -> JobRegime:
+        """The regime of the recipes this regime renders with."""
+        return JobRegime.KEYFRAMES if self is JobRegime.REGIME3 else self
 
 
 class JobStatus(enum.StrEnum):

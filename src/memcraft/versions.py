@@ -270,7 +270,7 @@ def pin_job(
                 raise LifecycleError(f"{_label(version)} is {version.status.value}")
     if critic is not None and critic.slot is not EngineSlot.CRITIC:
         raise InvalidVersionError(f"{_label(critic)} is not a critic")
-    if job.regime is not None and job.regime is not recipe.regime:
+    if job.regime is not None and job.regime.recipe_regime is not recipe.regime:
         raise InvalidVersionError(f"the job is {job.regime.value}, the recipe is not")
     job.recipe_id = recipe.id
     job.critic_engine_id = _id(critic)

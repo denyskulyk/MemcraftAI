@@ -24,7 +24,16 @@ from starlette.formparsers import MultiPartException, MultiPartParser
 
 from memcraft import cast as casting
 from memcraft import photos, queue
-from memcraft.models import Job, JobLane, JobLength, JobQuality, JobRegime, JobStatus, User
+from memcraft.models import (
+    Job,
+    JobLane,
+    JobLength,
+    JobQuality,
+    JobRegime,
+    JobStatus,
+    User,
+    UserRole,
+)
 from memcraft.photos import CropBox, FileSizeError, PhotoCountError, PhotoError
 from memcraft.pipeline.regime import regime_for
 from memcraft.storage import FileStore, StorageError
@@ -50,7 +59,7 @@ OPEN_STATUSES = (
 # Every photo at its largest, plus room for the other fields and the multipart framing.
 MAX_BODY = photos.MAX_PHOTOS * photos.MAX_BYTES + 1024 * 1024
 MAX_FIELD_BYTES = 16 * 1024
-FIELDS = ("photos", "crops", "length", "quality", "idea", "names")
+FIELDS = ("photos", "crops", "length", "quality", "idea", "names", "regime")
 
 REGIME_NOTES = {
     JobRegime.MULTISHOT: (
@@ -60,7 +69,13 @@ REGIME_NOTES = {
         "Two or three photos, or a long video: key pictures are made first and then "
         "animated. It takes about 2 to 4 times longer, and look and quality can differ."
     ),
+    JobRegime.REGIME3: (
+        "Regime 3 (admin test): Qwen3.8 Flash-Next plans with thinking on, people are cut out "
+        "of the photos as they are, and the key pictures are animated. Needs your idea."
+    ),
 }
+REGIME3_ADMINS_ONLY = "Only admins can use regime 3."
+REGIME3_NEEDS_IDEA = "Regime 3 needs your idea. Please write one."
 
 TOO_LARGE = f"The upload is too large. Each photo can be up to {photos.MAX_BYTES // 1024**2} MB."
 TOO_MANY_JOBS = (
@@ -85,7 +100,12 @@ def regime_note(
     user: ApprovedUser,
     photo_count: Annotated[int, Query(alias="photos", ge=1, le=photos.MAX_PHOTOS)],
     length: JobLength,
+    regime: JobRegime | None = None,
 ) -> RegimeNote:
+    if regime is JobRegime.REGIME3:
+        if user.role is not UserRole.ADMIN:
+            raise HTTPException(403, REGIME3_ADMINS_ONLY)
+        return RegimeNote(regime=regime, note=REGIME_NOTES[regime])
     regime = regime_for(photo_count, length)
     return RegimeNote(regime=regime, note=REGIME_NOTES[regime])
 
@@ -97,13 +117,16 @@ async def create_job(
     """Multipart: photos (1 to 3 files), crops (a JSON list of {x, y, w, h}, one per photo,
     as fractions of the photo the way the browser shows it), length, quality, idea, and
     optionally names (a JSON list, one entry per photo, of the names of its people from left
-    to right, which the idea may use as <name>; see memcraft.cast)."""
+    to right, which the idea may use as <name>; see memcraft.cast). Admins may send regime
+    "regime3" (1 to 3 photos and an idea that is not empty)."""
     _check_content_length(request)
+    is_admin = user.role is UserRole.ADMIN
     user_id = await run_in_threadpool(_check_open_jobs, session, user)
     form = await _read_form(request)
     try:
         fields = _fields(form)
-        return await run_in_threadpool(_create, session, store, user_id, *fields)
+        regime = _regime(form, is_admin, fields[4])
+        return await run_in_threadpool(_create, session, store, user_id, *fields, regime)
     finally:
         await form.close()
 
@@ -232,6 +255,20 @@ def _fields(form: FormData) -> _Fields:
     return files, crops, length, quality, idea, _cast(form, len(files), idea)
 
 
+def _regime(form: FormData, is_admin: bool, idea: str | None) -> JobRegime | None:
+    """Regime 3 when an admin asked for it, else None (the photo and length rule decides)."""
+    value = _one(form, "regime", "the regime", required=False)
+    if not value:
+        return None
+    if value != JobRegime.REGIME3.value:
+        raise HTTPException(422, "The regime must be regime3.")
+    if not is_admin:
+        raise HTTPException(403, REGIME3_ADMINS_ONLY)
+    if not idea:
+        raise HTTPException(422, REGIME3_NEEDS_IDEA)
+    return JobRegime.REGIME3
+
+
 def _cast(form: FormData, count: int, idea: str | None) -> casting.Cast | None:
     raw = _one(form, "names", "the names", required=False)
     try:
@@ -301,6 +338,7 @@ def _create(
     quality: JobQuality,
     idea: str | None,
     cast: casting.Cast | None,
+    regime: JobRegime | None = None,
 ) -> JobCreated:
     """The job and its photos in one transaction: all of it or nothing."""
     try:
@@ -320,7 +358,7 @@ def _create(
             quality=quality,
             lane=JobLane.IDEA,
             status=JobStatus.IDEA_QUEUED,
-            regime=regime_for(len(files), length),
+            regime=regime or regime_for(len(files), length),
         )
         session.add(job)
         session.flush()

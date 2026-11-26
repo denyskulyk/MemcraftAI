@@ -170,6 +170,8 @@ class Deps:
     # The director on its own llama-server (memcraft.pipeline.services.LlamaDirector), or None
     # for Qwen 3.8 inside ComfyUI. The critic keeps text_runner.
     director: Any = None
+    # Regime 3's director: Flash-Next in llama-swap (memcraft.pipeline.services.FlashDirector).
+    flash_director: Any = None
     # Seconds a ComfyUI run is expected to take, for the progress it reports while it waits.
     expected: dict[str, float] = field(
         default_factory=lambda: {"director": 150.0, "keyframe": 60.0, "clip": 120.0}
@@ -310,6 +312,20 @@ def _progressing(run_text: Any, ctx: StepContext) -> Any:
     return run
 
 
+def _streaming(ctx: StepContext) -> Callable[[int], None]:
+    """Progress for a streamed answer: rises with every piece over all calls of the step, so
+    the watchdog sees a thinking director working; a stopped step stops the stream."""
+    total = [0]
+
+    def on_piece(_pieces: int) -> None:
+        total[0] += 1
+        if total[0] % 8 == 0:
+            ctx.check_stop()
+            ctx.progress(0.05 + 0.85 * (1 - math.exp(-total[0] / 3000)))
+
+    return on_piece
+
+
 def run_options(ctx: StepContext, expected: float, start: float, end: float) -> RunOptions:
     return RunOptions(
         on_progress=comfy_progress(ctx, expected, start, end),
@@ -387,6 +403,10 @@ class ScenarioStep:
     """Qwen 3.8 directs: LTX prompts per run, and for keyframes the bible and three pictures.
 
     Pins the recipe and the critic, the first thing of the render that stays with the job.
+
+    Regime 3 (admin only, 2026-11-26): Flash-Next with thinking on directs from the photos and
+    the idea; no inventory and no SAM check, every photo's people are cut out 1:1 (no
+    redraw, no prop pictures), and no critic is pinned.
     """
 
     deps: Deps
@@ -401,8 +421,11 @@ class ScenarioStep:
         idea = approved_idea(session, job)
         images = gemma_images(session, deps.store, ctx.job_id)
         recipe = choices.render_recipe(session, job, regime, deps.workflows_dir)
+        regime3 = regime is JobRegime.REGIME3
         critic = (
-            session.get(EngineVersion, job.critic_engine_id)
+            None
+            if regime3
+            else session.get(EngineVersion, job.critic_engine_id)
             if job.recipe_id is not None
             else choices.render_critic(session)
         )
@@ -420,9 +443,19 @@ class ScenarioStep:
         ctx.progress(0.02)
         deps.comfy.ensure_up()
         started = time.monotonic()
-        session_of = deps.director.session if deps.director is not None else contextlib.nullcontext
-        with session_of() as llama, deps.comfy.client() as client:
-            if llama is not None:
+        if regime3:
+            if deps.flash_director is None:
+                raise PipelineError("regime 3 needs the Flash-Next director")
+            director_session: Any = deps.flash_director.session(_streaming(ctx))
+        elif deps.director is not None:
+            director_session = deps.director.session()
+        else:
+            director_session = contextlib.nullcontext()
+        inventory = None
+        with director_session as llama, deps.comfy.client() as client:
+            if llama is not None and regime3:
+                runner = llama
+            elif llama is not None:
                 runner = _progressing(llama, ctx)
             else:
                 reporting = _Reporting(client, comfy_progress(ctx, deps.expected["director"]))
@@ -439,8 +472,22 @@ class ScenarioStep:
                     seed=seed,
                     cast=job.cast,
                 )
+            elif regime3:
+                compose = "background" in parts(prompt.text)
+                scenario = direct_keyframes(
+                    runner,
+                    prompt,
+                    images,
+                    idea,
+                    length=job.length,
+                    frames=frames,
+                    seed=seed,
+                    cast=job.cast,
+                    faces=face_boxes(session, deps.store, ctx.job_id) if compose else None,
+                    cut_people=True,
+                )
             else:
-                inventory, confirm = None, None
+                confirm = None
                 found = parts(prompt.text)
                 if "inventory" in found and "background" in found:
                     inventory = self._inventory(ctx, client, runner, recipe, prompt, images, seed)
@@ -460,7 +507,7 @@ class ScenarioStep:
                 )
         deps.comfy.clean(folder)
         output = scenario.as_output()
-        if regime is not JobRegime.MULTISHOT and inventory is not None:
+        if inventory is not None:
             output["inventory"] = inventory
         output.update(
             regime=regime.value,
@@ -641,7 +688,11 @@ class KeyframeStep:
                     work / "keyframe.png",
                     run_options(ctx, deps.expected["keyframe"], 0.02, 0.95),
                 )
-                if is_asset and keyframe.get("kind") == "background":
+                if (
+                    is_asset
+                    and keyframe.get("kind") == "background"
+                    and job.regime is not JobRegime.REGIME3  # regime 3: no SAM check
+                ):
                     # E16: Qwen sometimes draws people into the empty place anyway; SAM looks
                     # for a person and the background is drawn again with the next seed.
                     for retry in range(1, BACKGROUND_RETRIES + 1):

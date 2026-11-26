@@ -82,6 +82,14 @@ def test_migration_matches_models():
                 )
             )
         )
+    # A check constraint replaced later (0008: regime3) is the new one in its table's statement.
+    for table, name, check in re.findall(
+        r"ALTER TABLE (\w+) ADD CONSTRAINT (\w+) (CHECK .+);", sql
+    ):
+        [created] = [s for s in migrated if f"CREATE TABLE {table} (" in s]
+        migrated.remove(created)
+        kept = [x for x in created if not x.startswith(f"CONSTRAINT {name} ")]
+        migrated.add(tuple(sorted((*kept, f"CONSTRAINT {name} {check}"))))
     dialect = postgresql.dialect()
     ddl = []
     for table in Base.metadata.sorted_tables:

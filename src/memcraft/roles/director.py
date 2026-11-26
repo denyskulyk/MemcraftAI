@@ -726,13 +726,17 @@ def asset_pictures(
     held: Mapping[int, Sequence[str]] | None = None,
     confirm: Callable[[int, str], bool] | None = None,
     faces: Mapping[int, Sequence[float]] | None = None,
+    cut_people: bool = False,
 ) -> tuple[list[AssetPicture], list[str]]:
     """The pictures to draw before the keyframes, from the CLEAN and PROP PICTURES sections,
     and notes on what was left out.
 
     With ``background`` (the prompt of the empty place) the keyframes are put together from
     asset pictures (E16, Denys's layout): the background first, then every photo's people
-    alone and cut out, then the props cut out."""
+    alone and cut out, then the props cut out.
+
+    With ``cut_people`` (regime 3) every photo is cut out 1:1 and there are no prop pictures:
+    what the people hold stays in their hands."""
     notes: list[str] = []
     numbers = sorted(n for n in tags_in(clean) if 1 <= n <= photos)
     if background is not None:
@@ -763,6 +767,9 @@ def asset_pictures(
             # drawn (a cup held by its side); the keyframe prompt's words draw it better.
             notes.append(f"PROP PICTURES: {words!r} is in no photo; drawn from its words")
             continue
+        if cut_people:
+            notes.append(f"PROP PICTURES: {words!r} left out; regime 3 draws no prop pictures")
+            continue
         if all(known != w for w, _ in props):
             props.append((known, photo))
     face_boxes = dict(faces or {}) if background is not None else {}
@@ -778,6 +785,8 @@ def asset_pictures(
     holding = {photo for _, photo in props if photo is not None}
     # Whoever really holds something is drawn empty-handed, or it stays in their cut-out.
     holding |= {photo for photo, items in (held or {}).items() if items}
+    if cut_people:
+        holding = set()
     for _, photo in props:
         if photo is not None and photo not in numbers:
             numbers.append(photo)
@@ -883,9 +892,11 @@ def direct_keyframes(
     inventory: Sequence[Mapping[str, Any]] | None = None,
     confirm: Callable[[int, str], bool] | None = None,
     faces: Mapping[int, Sequence[float]] | None = None,
+    cut_people: bool = False,
 ) -> KeyframePlan:
     """``inventory``: the checked photo inventory (E16), each entry with ``checked``: object ->
-    whether SAM found it; it goes to the director and decides who is drawn empty-handed."""
+    whether SAM found it; it goes to the director and decides who is drawn empty-handed.
+    ``cut_people``: regime 3, see asset_pictures()."""
     if not 1 <= len(photos) <= 3:
         raise DirectorError("the keyframes regime takes 1 to 3 photos")
     if not idea.strip():
@@ -963,6 +974,7 @@ def direct_keyframes(
         held=confirmed_holds(inventory) if compose else None,
         confirm=confirm,
         faces=faces,
+        cut_people=cut_people,
     )
     problems += notes
     clean = {a.photo: f"asset:{i}" for i, a in enumerate(assets) if a.kind == "clean"}
