@@ -170,7 +170,7 @@ def test_the_thinking_runner_streams_only_the_answer():
     body = kwargs["json"]
     assert body["model"] == "qwen-flash-next-strata" and body["stream"] is True
     assert body["chat_template_kwargs"] == {"enable_thinking": True}
-    assert body["max_tokens"] == 16384 and body["temperature"] == 0.6
+    assert body["max_tokens"] == 32768 and body["temperature"] == 0.6
     assert kwargs["headers"] == {"Authorization": "Bearer k"}
     assert body["messages"][1]["content"][0]["image_url"]["url"].startswith("data:image/png")
 

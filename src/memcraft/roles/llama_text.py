@@ -102,7 +102,7 @@ class LlamaTextRunner:
 # Regime 3 (2026-11-26): Qwen3.8 Flash-Next IQ3_XXS on Strata, the "qwen-flash-next-strata"
 # model of llama-swap (128K context, pictures, thinking on). Thinking costs thousands of tokens,
 # so the answer streams and every piece moves the step's progress for the watchdog.
-FLASH_MAX_LENGTH = 16384
+FLASH_MAX_LENGTH = 32768
 FLASH_TIMEOUT = 1500.0
 _THINK = re.compile(r"<think>.*?</think>", re.S)
 
